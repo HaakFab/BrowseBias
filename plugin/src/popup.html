@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autocomplete Bias</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <div class="popup-header">
+      <img src="../icons/icon48.png" alt="Logo" class="popup-logo">
+      <div>
+        <h1>Autocomplete Bias</h1>
+        <div class="header-tag-badge" id="header-tag-badge">v1.1.0 [Silurian]</div>
+      </div>
+    </div>
+
+    <!-- Settings Section -->
+    <div class="section-title">Settings</div>
+
+    <!-- Highlighting toggle -->
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-label">Bias Highlighting</span>
+        <span class="setting-desc">Color-code suggestions on Google</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-highlighting" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <!-- Logging / Data collection toggle -->
+    <div class="setting-row" id="scraping-row">
+      <div class="setting-info">
+        <span class="setting-label">Data Logging</span>
+        <span class="setting-desc">Share anonymized search queries</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-scraping">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <!-- Auto-Sync Interval Setting -->
+    <div class="setting-row" id="sync-schedule-row">
+      <div class="setting-info">
+        <span class="setting-label">Auto-Upload Sync</span>
+        <span class="setting-desc">Scheduled background sync</span>
+      </div>
+      <select id="select-sync-interval" class="popup-select">
+        <option value="60">Every 1 hour</option>
+        <option value="1440">Every 24 hours</option>
+        <option value="manual">Manual only</option>
+      </select>
+    </div>
+
+    <!-- Pseudonym / Cohort Tag Setting -->
+    <div class="setting-row" id="pseudonym-row">
+      <div class="setting-info">
+        <span class="setting-label">User Tag / Pseudonym</span>
+        <span class="setting-desc">Audit tag for student cohort</span>
+      </div>
+      <div class="pseudonym-input-group">
+        <input type="text" id="input-pseudonym" class="popup-input" placeholder="e.g. Curious-Fox-42" maxlength="32">
+        <button id="btn-save-pseudonym" class="btn btn-tiny btn-primary" title="Save pseudonym">Save</button>
+        <button id="btn-random-pseudonym" class="btn btn-tiny btn-secondary" title="Generate random pseudonym">🎲</button>
+      </div>
+    </div>
+
+    <!-- Consent notice (shown when toggling scraping on without consent) -->
+    <div class="consent-notice" id="consent-notice" style="display: none;">
+      <p>You must provide consent before enabling data collection.</p>
+      <button id="btn-give-consent" class="btn btn-primary btn-small">Review &amp; Consent</button>
+    </div>
+
+    <!-- Feedback & Reporting Section -->
+    <div class="section-title">Report &amp; Feedback</div>
+    <div class="report-section">
+      <div class="report-context" id="report-context">
+        <span class="context-icon">🔍</span>
+        <span class="context-text" id="context-text">Detecting active Google search...</span>
+      </div>
+
+      <div class="report-actions">
+        <button id="btn-report-problematic" class="btn btn-report btn-danger-outline" title="Report autocomplete suggestions as offensive, harmful, or especially problematic">
+          🚨 Problematic Suggestions
+        </button>
+        <button id="btn-report-wrong-bias" class="btn btn-report btn-warning-outline" title="Report suggestion bias color labels as wrong or inaccurate">
+          🏷️ Wrong Bias Labels
+        </button>
+      </div>
+
+      <div class="report-details" id="report-details" style="display: none;">
+        <div class="selected-report-type" id="selected-report-type">Report Type: None</div>
+        <textarea id="report-comment" placeholder="Optional details, comments, or why this is problematic..." rows="2"></textarea>
+        <div class="report-submit-row">
+          <button id="btn-submit-report" class="btn btn-primary btn-small">
+            🚀 Submit Report
+          </button>
+          <button id="btn-cancel-report" class="btn btn-secondary btn-small">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status section -->
+    <div class="section-title">Status</div>
+    <div class="status-section">
+      <div class="status-row">
+        <span class="status-label">Buffered entries:</span>
+        <span class="status-value" id="pending-count">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Synced Lexicon:</span>
+        <span class="status-value" id="lexicon-count">0 terms</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Last upload:</span>
+        <span class="status-value" id="last-upload">Never</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Next auto-sync:</span>
+        <span class="status-value" id="next-sync-status">Hourly</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Version tag:</span>
+        <span class="status-value mono" id="status-vtag">Ordovician</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-section">
+      <button id="btn-upload-now" class="btn btn-primary btn-small" style="width: 100%; margin-bottom: 6px;">
+        ⚡ Sync &amp; Upload Now
+      </button>
+      <button id="btn-download-dataset" class="btn btn-secondary btn-small" style="width: 100%; margin-bottom: 6px;">
+        📥 Download Annotated Dataset
+      </button>
+      <button id="btn-delete-data" class="btn btn-danger btn-small" style="width: 100%;">
+        🗑️ Delete Buffered Data
+      </button>
+    </div>
+
+    <!-- Links -->
+    <div class="links-section">
+      <a href="../legal/privacy_policy.html" target="_blank">Privacy Policy</a>
+      <span class="link-separator">·</span>
+      <a href="../legal/terms.html" target="_blank">Terms</a>
+      <span class="link-separator">·</span>
+      <a href="https://github.com/HaakFab/BrowseBias" target="_blank">About</a>
+    </div>
+
+    <!-- Version -->
+    <div class="version-info">
+      v<span id="version-number">1.1.0</span> · <span id="vtag-number">Silurian</span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

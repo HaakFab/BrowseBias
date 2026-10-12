@@ -1,0 +1,70 @@
+# Autocomplete Bias — Default Multi-Category Framework
+# =====================================================
+# This file defines the default bias categories used by the engine.
+# Each category is independently scored on a continuous [0.0, 1.0] scale.
+
+name: autocomplete_bias
+description: >
+  Multi-category bias framework for autocomplete search suggestions.
+  Each category is independently scored via Bradley-Terry modeling.
+
+categories:
+  - key: political
+    short_key: p
+    name: Political Ideology Bias
+    definition: >
+      Suggestions that favor, amplify, or demonize a political position,
+      party, leader, or ideology through loaded, evaluative, or one-sided
+      language. Includes partisan framing, political endorsements or attacks,
+      and ideologically charged language.
+    mouseover_template: "This suggestion reflects political ideology bias (score: {score:.2f})."
+
+  - key: accusation
+    short_key: a
+    name: Accusation / Defamation
+    definition: >
+      Suggestions that accuse, defame, or make unsubstantiated negative claims
+      about individuals, groups, or institutions without factual basis or in a
+      sensationalized manner. Includes character attacks, guilt-by-association,
+      and inflammatory allegations presented as fact.
+    mouseover_template: "This suggestion contains accusatory or defamatory language (score: {score:.2f})."
+
+  - key: conspiracy
+    short_key: c
+    name: Conspiracy Theory
+    definition: >
+      Suggestions that promote, lend credibility to, or normalize conspiracy
+      theories, unsubstantiated cover-up narratives, or paranoid framing.
+      Includes references to debunked plots, secret cabals, hidden truths
+      that mainstream sources allegedly suppress.
+    mouseover_template: "This suggestion is associated with conspiracy theories (score: {score:.2f})."
+
+  - key: sexism
+    short_key: s
+    name: Sexism / Gender Bias
+    definition: >
+      Suggestions that reinforce gender stereotypes, demean a gender, or
+      contain gendered slurs, assumptions, or objectifying language. Includes
+      suggestions implying gender-based inferiority, restrictive roles, or
+      hostility toward a gender identity.
+    mouseover_template: "This suggestion reflects sexism or gender bias (score: {score:.2f})."
+
+  - key: racism
+    short_key: r
+    name: Racism / Ethnic Bias
+    definition: >
+      Suggestions that associate ethnic, racial, or national groups with
+      negative attributes, reinforce stereotypes, or use dehumanizing
+      language. Includes racial profiling language, ethnic slurs, and
+      disproportionate negative associations.
+    mouseover_template: "This suggestion reflects racism or ethnic bias (score: {score:.2f})."
+
+  - key: religious
+    short_key: re
+    name: Religious Bias
+    definition: >
+      Suggestions that demonize, mock, or unfairly characterize religious
+      groups, beliefs, or practices. Includes blanket negative statements
+      about religious communities, mockery of faith, or hostile framing
+      of religious identity.
+    mouseover_template: "This suggestion reflects religious bias (score: {score:.2f})."

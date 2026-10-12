@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome — Autocomplete Bias</title>
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <div class="onboarding-wrapper">
+    <div class="onboarding-card">
+
+      <!-- Step 1: Welcome -->
+      <div class="step" id="step-welcome">
+        <div class="step-icon">🔍</div>
+        <h1>Welcome to Autocomplete Bias</h1>
+        <p class="subtitle">
+          A research tool by <strong>TH Köln</strong> that highlights potential bias
+          in Google Search autocomplete suggestions.
+        </p>
+        <div class="feature-list">
+          <div class="feature">
+            <span class="feature-icon">🎨</span>
+            <div>
+              <strong>Bias Highlighting</strong>
+              <p>Autocomplete suggestions are color-coded based on their bias score — from blue to red in 3 intensity levels.</p>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🔬</span>
+            <div>
+              <strong>Research Purpose</strong>
+              <p>This extension is part of a PhD research project studying bias in search engine suggestions.</p>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🔒</span>
+            <div>
+              <strong>Privacy First</strong>
+              <p>No personal data is collected. All data is fully anonymous. You control everything.</p>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-next-consent">Continue</button>
+      </div>
+
+      <!-- Step 2: Data collection consent -->
+      <div class="step" id="step-consent" style="display: none;">
+        <div class="step-icon">📋</div>
+        <h1>Data Collection (Optional)</h1>
+        <p class="subtitle">
+          To improve our research, we can optionally collect anonymized search data.
+          This is <strong>entirely optional</strong> — the extension works fully without it.
+        </p>
+
+        <div class="consent-details">
+          <h3>What we collect (if you opt in):</h3>
+          <ul>
+            <li>The search terms you type into Google</li>
+            <li>The autocomplete suggestions Google shows you</li>
+            <li>The bias scores assigned to each suggestion</li>
+            <li>Timestamp and Google domain used (e.g. google.de)</li>
+            <li>Your browser language setting</li>
+          </ul>
+
+          <h3>What we <em>never</em> collect:</h3>
+          <ul class="never-list">
+            <li>Your name, email, or any personal identifiers</li>
+            <li>Your IP address</li>
+            <li>Your browsing history outside Google Search</li>
+            <li>Cookies, passwords, or form data</li>
+            <li>Any data that could identify you personally</li>
+          </ul>
+
+          <h3>How it works:</h3>
+          <ul>
+            <li>Data is stored locally on your device</li>
+            <li>Every hour, buffered data is sent to our secure research server via HTTPS</li>
+            <li>Uploads are completely anonymous — no user IDs, no tracking</li>
+            <li>You can delete all local data at any time via the extension popup</li>
+            <li>You can withdraw consent at any time — just toggle the switch off</li>
+          </ul>
+        </div>
+
+        <div class="consent-legal">
+          <p>
+            By opting in, you consent to the processing of anonymized search data as
+            described above, in accordance with the
+            <a href="../legal/privacy_policy.html" target="_blank">Privacy Policy</a>
+            and GDPR Art. 6(1)(a).
+          </p>
+          <p>
+            <strong>Data Controller:</strong> Fabian Haak, TH Köln<br>
+            <strong>Contact:</strong> <a href="mailto:fabian.haak@th-koeln.de">fabian.haak@th-koeln.de</a>
+          </p>
+        </div>
+
+        <div class="consent-buttons">
+          <button class="btn btn-primary" id="btn-consent-yes">
+            ✅ Yes, I consent to data collection
+          </button>
+          <button class="btn btn-secondary" id="btn-consent-no">
+            No thanks, just use highlighting
+          </button>
+        </div>
+        <p class="consent-note">
+          Both options are completely fine. You can change this at any time in the extension popup.
+        </p>
+      </div>
+
+      <!-- Step 3: Confirmation -->
+      <div class="step" id="step-done" style="display: none;">
+        <div class="step-icon">✅</div>
+        <h1>You're all set!</h1>
+        <p class="subtitle" id="done-message">
+          <!-- Dynamically set based on consent choice -->
+        </p>
+
+        <div class="summary-card">
+          <div class="summary-row">
+            <span>Bias Highlighting</span>
+            <span class="badge badge-on">Enabled</span>
+          </div>
+          <div class="summary-row">
+            <span>Data Collection</span>
+            <span class="badge" id="badge-scraping">Disabled</span>
+          </div>
+        </div>
+
+        <p class="hint">
+          Click the <img src="../icons/icon16.png" alt="icon" class="inline-icon"> icon
+          in your browser toolbar to change settings at any time.
+        </p>
+
+        <button class="btn btn-primary" id="btn-start">Start using Autocomplete Bias</button>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="onboarding-footer">
+      <a href="../legal/privacy_policy.html" target="_blank">Privacy Policy</a>
+      <span>·</span>
+      <a href="../legal/terms.html" target="_blank">Terms &amp; Conditions</a>
+      <span>·</span>
+      <span>Autocomplete Bias v1.0.0 — TH Köln</span>
+    </div>
+  </div>
+
+  <script src="onboarding.js"></script>
+</body>
+</html>

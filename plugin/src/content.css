@@ -1,0 +1,100 @@
+/*
+ * Autocomplete Bias — Content Styles
+ * ====================================
+ * Continuous numerical bias indicator colors applied via [data-bias-score] attribute
+ * and CSS custom property --bias-score (in [0.0, 1.0]).
+ *
+ * Uses smooth continuous opacity scaling so visual intensity reflects exact
+ * Bradley-Terry score without discrete bucket quantization.
+ */
+
+/* ─── Continuous Numerical Bias Indicator ─────────────────────────── */
+
+[data-bias-score] {
+  background-color: rgba(220, 38, 38, calc(var(--bias-score, 0.5) * 0.32)) !important;
+  border-left: calc(2px + var(--bias-score, 0.5) * 3px) solid rgba(220, 38, 38, calc(0.35 + var(--bias-score, 0.5) * 0.6)) !important;
+  transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+/* ─── Hover Feedback on Suggestions ───────────────────────────────── */
+[data-bias-score]:hover {
+  filter: brightness(1.04);
+}
+
+/* ─── Visual Confidence & Source Attribution Tooltip Overlay ──────── */
+.ab-tooltip-bubble {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  padding: 8px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 11.5px;
+  line-height: 1.4;
+  max-width: 320px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.ab-tooltip-bubble.ab-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ab-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ab-tooltip-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ab-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ab-tooltip-confidence {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.ab-tooltip-body {
+  font-size: 11px;
+  color: #e2e8f0;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.ab-tooltip-footer {
+  font-size: 10px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

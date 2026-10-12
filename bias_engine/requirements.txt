@@ -1,0 +1,22 @@
+# Bias Engine — Dependencies
+# Core
+flask>=3.0
+flask-cors>=4.0
+
+# LLM Providers
+google-generativeai>=0.8
+openai>=1.30
+
+# NLP (suggestion normalization)
+spacy>=3.7
+
+# Bradley-Terry model fitting
+numpy>=1.26
+scipy>=1.12
+
+# Scheduling
+apscheduler>=3.10
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.66

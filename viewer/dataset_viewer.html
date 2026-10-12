@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrowseBias — Standalone Dataset Viewer (v1.1.0 Silurian)</title>
+    <style>
+        :root {
+            --bg-base: #0d1117;
+            --bg-surface: #161b22;
+            --bg-elevated: #21262d;
+            --bg-subtle: #1c2128;
+            --border-default: #30363d;
+            --border-muted: #21262d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #bc8cff;
+            --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            font-size: 13px;
+            line-height: 1.5;
+            padding: 16px 24px;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-default);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-title h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.3px;
+        }
+        .tag-badge {
+            background: rgba(88, 166, 255, 0.12);
+            color: var(--accent-blue);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+
+        /* Drop Zone */
+        .dropzone-container {
+            background: var(--bg-surface);
+            border: 2px dashed var(--border-default);
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .dropzone-container.dragover {
+            border-color: var(--accent-blue);
+            background: rgba(88, 166, 255, 0.05);
+        }
+        .dropzone-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+        .dropzone-desc {
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+        .dropzone-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .btn:hover {
+            background: #30363d;
+            border-color: #8b949e;
+        }
+        .btn-primary {
+            background: #238636;
+            color: #fff;
+            border-color: rgba(240,246,252,0.1);
+        }
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+        .btn-secondary {
+            background: var(--bg-elevated);
+        }
+
+        /* Stat Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+        .card-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+        }
+        .card-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .search-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            color: var(--text-primary);
+            padding: 6px 10px;
+            font-size: 12px;
+            outline: none;
+            min-width: 240px;
+        }
+        .search-input:focus { border-color: var(--accent-blue); }
+        .select-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            color: var(--text-primary);
+            padding: 6px 8px;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Table */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--border-default);
+            border-radius: 8px;
+            background: var(--bg-surface);
+            margin-bottom: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 12px;
+        }
+        th {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-default);
+            white-space: nowrap;
+            user-select: none;
+            cursor: pointer;
+        }
+        th:hover { color: var(--text-primary); }
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-muted);
+            vertical-align: middle;
+        }
+        tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Chips & Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            font-family: var(--font-mono);
+        }
+        .badge-blue { background: rgba(88, 166, 255, 0.15); color: #79c0ff; border: 1px solid rgba(88, 166, 255, 0.25); }
+        .badge-purple { background: rgba(188, 140, 255, 0.15); color: #d2a8ff; border: 1px solid rgba(188, 140, 255, 0.25); }
+        .badge-gray { background: rgba(110, 118, 129, 0.15); color: #8b949e; border: 1px solid rgba(110, 118, 129, 0.25); }
+        .badge-red { background: rgba(248, 81, 73, 0.15); color: #ff7b72; border: 1px solid rgba(248, 81, 73, 0.25); }
+        .badge-yellow { background: rgba(210, 153, 34, 0.15); color: #e3b341; border: 1px solid rgba(210, 153, 34, 0.25); }
+        .mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+        .sugg-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            max-width: 650px;
+        }
+        .sugg-chip {
+            display: inline-flex;
+            align-items: center;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-default);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11.5px;
+            gap: 4px;
+            cursor: default;
+            transition: all 0.15s ease;
+        }
+        .sugg-chip:hover {
+            border-color: var(--text-secondary);
+            background: var(--bg-elevated);
+        }
+        .sugg-num {
+            color: var(--text-muted);
+            font-size: 9.5px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+        }
+        .sugg-txt {
+            color: var(--text-primary);
+        }
+        .sugg-chip.biased {
+            background: rgba(248, 81, 73, 0.12);
+            border-color: rgba(248, 81, 73, 0.35);
+        }
+        .sugg-chip.biased .sugg-txt {
+            color: #ffa198;
+            font-weight: 500;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .page-controls {
+            display: flex;
+            gap: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-title">
+            <h1>BrowseBias Dataset Viewer</h1>
+            <span class="tag-badge">Offline Standalone · v1.1.0 [Silurian]</span>
+        </div>
+        <div>
+            <button class="btn btn-secondary" onclick="exportCSV()">📤 Export CSV</button>
+            <button class="btn btn-secondary" onclick="exportJSON()">📤 Export JSON</button>
+            <button class="btn btn-primary" onclick="loadDemoData()">✨ Load Demo Sample</button>
+        </div>
+    </div>
+
+    <!-- Drag & Drop Zone -->
+    <div id="dropzone" class="dropzone-container" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" style="display: none;" accept=".jsonl,.json,.txt" onchange="handleFileSelect(event)">
+        <div class="dropzone-title">📂 Drag &amp; Drop <code>suggestions.jsonl</code> or <code>uploads.jsonl</code> here</div>
+        <div class="dropzone-desc">Or click to browse from your computer. Files are processed entirely offline in your browser.</div>
+        <div class="dropzone-actions">
+            <span class="btn btn-secondary" style="pointer-events: none;">Select Local File</span>
+        </div>
+    </div>
+
+    <!-- Telemetry Cards -->
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-value" id="card-queries">0</div>
+            <div class="card-label">Queries Loaded</div>
+        </div>
+        <div class="card">
+            <div class="card-value" id="card-suggestions">0</div>
+            <div class="card-label">Total Suggestions</div>
+        </div>
+        <div class="card">
+            <div class="card-value" id="card-biased-pct">0.0%</div>
+            <div class="card-label">Biased Ratio (&ge; 0.35)</div>
+        </div>
+        <div class="card">
+            <div class="card-value" id="card-cohorts">0</div>
+            <div class="card-label">Unique User Tags / Cohorts</div>
+        </div>
+    </div>
+
+    <!-- Toolbar Filters -->
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <input type="text" id="filter-search" class="search-input" placeholder="🔍 Search query, suggestion, user tag..." oninput="applyFilters()">
+            <select id="filter-user" class="select-input" onchange="applyFilters()">
+                <option value="">All User Tags</option>
+            </select>
+            <select id="filter-bias" class="select-input" onchange="applyFilters()">
+                <option value="all">All Bias Levels</option>
+                <option value="biased">Biased Only (&ge; 0.35)</option>
+                <option value="high">High Bias (&ge; 0.65)</option>
+                <option value="neutral">Neutral Only (&lt; 0.35)</option>
+            </select>
+            <select id="filter-domain" class="select-input" onchange="applyFilters()">
+                <option value="">All Domains</option>
+            </select>
+        </div>
+        <div class="toolbar-group">
+            <span id="showing-indicator" class="mono" style="color: var(--text-secondary);">0 entries</span>
+            <select id="page-size-select" class="select-input" onchange="changePageSize(this.value)">
+                <option value="50">50 per page</option>
+                <option value="100" selected>100 per page</option>
+                <option value="250">250 per page</option>
+                <option value="all">Show All</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Main Table -->
+    <div class="table-responsive">
+        <table id="viewer-table">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Timestamp ⇅</th>
+                    <th onclick="sortTable(1)">User / Cohort Tag ⇅</th>
+                    <th onclick="sortTable(2)">Query ⇅</th>
+                    <th>Suggestions (#1 to #10 with Bias Scores)</th>
+                    <th onclick="sortTable(4)">Domain ⇅</th>
+                    <th onclick="sortTable(5)">Lang ⇅</th>
+                    <th onclick="sortTable(6)">Version ⇅</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        No dataset loaded yet. Drag and drop a <code>suggestions.jsonl</code> file or click "Load Demo Sample" above.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div class="pagination">
+        <div id="page-info">Page 1 of 1</div>
+        <div class="page-controls">
+            <button class="btn btn-secondary" id="btn-prev" onclick="changePage(-1)" disabled>◀ Previous</button>
+            <button class="btn btn-secondary" id="btn-next" onclick="changePage(1)" disabled>Next ▶</button>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let rawEntries = [];
+        let filteredEntries = [];
+        let currentPage = 1;
+        let pageSize = 100;
+        let sortCol = 0;
+        let sortAsc = false;
+
+        // Setup Drag & Drop
+        const dropzone = document.getElementById('dropzone');
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                loadFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        function handleFileSelect(e) {
+            if (e.target.files && e.target.files[0]) {
+                loadFile(e.target.files[0]);
+            }
+        }
+
+        function loadFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                parseFileContent(evt.target.result, file.name);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseFileContent(text, filename) {
+            const lines = text.split('\n');
+            const entries = [];
+            let totalSugg = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                try {
+                    const obj = JSON.parse(line);
+                    // Check if this is an upload batch or a flat suggestion or query entry
+                    if (obj.entries && Array.isArray(obj.entries)) {
+                        // Batched uploads format
+                        const batchUser = obj.user_pseudonym || obj.user_tag || 'anonymous';
+                        const batchVer = obj.version || obj.extensionVersion || '1.1.0';
+                        const batchTag = obj.v_tag || obj.versionTag || 'Silurian';
+                        obj.entries.forEach(sub => {
+                            entries.push({
+                                timestamp: sub.timestamp || obj.receivedAt || '',
+                                user_pseudonym: sub.user_pseudonym || batchUser,
+                                query: sub.query || '',
+                                suggestions: sub.suggestions || [],
+                                googleTld: sub.googleTld || '',
+                                language: sub.language || '',
+                                version: sub.version || batchVer,
+                                v_tag: sub.v_tag || batchTag
+                            });
+                        });
+                    } else if (obj.suggestions && Array.isArray(obj.suggestions)) {
+                        // Query entry with suggestions array
+                        entries.push(obj);
+                    } else if (obj.suggestion) {
+                        // Flat suggestion record -> aggregate into query groupings if needed, or row
+                        entries.push({
+                            timestamp: obj.timestamp || obj.receivedAt || '',
+                            user_pseudonym: obj.user_pseudonym || obj.user_tag || 'anonymous',
+                            query: obj.query || '',
+                            suggestions: [{ text: obj.suggestion, score: obj.score }],
+                            googleTld: obj.googleTld || '',
+                            language: obj.language || '',
+                            version: obj.version || '1.1.0',
+                            v_tag: obj.v_tag || 'Silurian'
+                        });
+                    }
+                } catch (e) {
+                    // skip non-json lines
+                }
+            }
+
+            if (entries.length > 0) {
+                rawEntries = entries;
+                initDataset();
+            } else {
+                alert('No valid JSONL records found in ' + filename);
+            }
+        }
+
+        function initDataset() {
+            // Populate user tags & domains dropdowns
+            const users = new Set();
+            const domains = new Set();
+
+            rawEntries.forEach(e => {
+                if (e.user_pseudonym) users.add(e.user_pseudonym);
+                if (e.googleTld) domains.add(e.googleTld);
+            });
+
+            const userSel = document.getElementById('filter-user');
+            userSel.innerHTML = '<option value="">All User Tags</option>';
+            Array.from(users).sort().forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u;
+                opt.textContent = u;
+                userSel.appendChild(opt);
+            });
+
+            const domSel = document.getElementById('filter-domain');
+            domSel.innerHTML = '<option value="">All Domains</option>';
+            Array.from(domains).sort().forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                domSel.appendChild(opt);
+            });
+
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const queryFilter = (document.getElementById('filter-search').value || '').toLowerCase();
+            const userFilter = document.getElementById('filter-user').value;
+            const biasFilter = document.getElementById('filter-bias').value;
+            const domainFilter = document.getElementById('filter-domain').value;
+
+            filteredEntries = rawEntries.filter(e => {
+                const qText = (e.query || '').toLowerCase();
+                const uText = (e.user_pseudonym || '').toLowerCase();
+                const matchSearch = !queryFilter || qText.includes(queryFilter) || uText.includes(queryFilter) ||
+                    (e.suggestions || []).some(s => (s.text || s).toLowerCase().includes(queryFilter));
+
+                const matchUser = !userFilter || e.user_pseudonym === userFilter;
+                const matchDomain = !domainFilter || e.googleTld === domainFilter;
+
+                let matchBias = true;
+                const maxScore = Math.max(0, ...(e.suggestions || []).map(s => (s && typeof s.score === 'number' ? s.score : 0)));
+                if (biasFilter === 'biased') matchBias = maxScore >= 0.35;
+                else if (biasFilter === 'high') matchBias = maxScore >= 0.65;
+                else if (biasFilter === 'neutral') matchBias = maxScore < 0.35;
+
+                return matchSearch && matchUser && matchDomain && matchBias;
+            });
+
+            // Update Cards
+            let totalSugg = 0;
+            let biasedSugg = 0;
+            const userSet = new Set();
+
+            filteredEntries.forEach(e => {
+                if (e.user_pseudonym) userSet.add(e.user_pseudonym);
+                (e.suggestions || []).forEach(s => {
+                    totalSugg++;
+                    if (s && typeof s.score === 'number' && s.score >= 0.35) {
+                        biasedSugg++;
+                    }
+                });
+            });
+
+            document.getElementById('card-queries').textContent = filteredEntries.length.toLocaleString();
+            document.getElementById('card-suggestions').textContent = totalSugg.toLocaleString();
+            document.getElementById('card-biased-pct').textContent = totalSugg > 0 ? ((biasedSugg / totalSugg) * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('card-cohorts').textContent = userSet.size.toLocaleString();
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            if (filteredEntries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">No entries match the current filters.</td></tr>';
+                document.getElementById('showing-indicator').textContent = '0 entries';
+                document.getElementById('page-info').textContent = 'Page 0 of 0';
+                return;
+            }
+
+            const total = filteredEntries.length;
+            const effectivePageSize = pageSize === 'all' ? total : parseInt(pageSize, 10);
+            const totalPages = Math.ceil(total / effectivePageSize);
+            const startIdx = (currentPage - 1) * effectivePageSize;
+            const endIdx = Math.min(startIdx + effectivePageSize, total);
+
+            document.getElementById('showing-indicator').textContent = `Showing ${startIdx + 1}–${endIdx} of ${total}`;
+            document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('btn-prev').disabled = currentPage <= 1;
+            document.getElementById('btn-next').disabled = currentPage >= totalPages;
+
+            const slice = filteredEntries.slice(startIdx, endIdx);
+
+            slice.forEach(e => {
+                const tr = document.createElement('tr');
+                const timeStr = (e.timestamp || '').slice(0, 19).replace('T', ' ');
+
+                let suggHtml = '<div class="sugg-container">';
+                (e.suggestions || []).forEach((s, idx) => {
+                    const txt = s.text || s;
+                    const score = (s && typeof s.score === 'number') ? s.score : null;
+                    const isBiased = score !== null && score >= 0.35;
+                    const titleTip = score !== null ? `${txt} (Score: ${score.toFixed(2)})` : txt;
+                    suggHtml += `
+                        <div class="sugg-chip ${isBiased ? 'biased' : ''}" title="${titleTip}">
+                            <span class="sugg-num">#${idx + 1}</span>
+                            <span class="sugg-txt">${escapeHtml(txt)}</span>
+                        </div>
+                    `;
+                });
+                suggHtml += '</div>';
+
+                tr.innerHTML = `
+                    <td class="mono">${timeStr}</td>
+                    <td class="mono"><span class="badge badge-blue">${escapeHtml(e.user_pseudonym || 'anonymous')}</span></td>
+                    <td><strong style="color: #fff;">${escapeHtml(e.query || '—')}</strong></td>
+                    <td>${suggHtml}</td>
+                    <td class="mono">${escapeHtml(e.googleTld || '—')}</td>
+                    <td class="mono">${escapeHtml(e.language || '—')}</td>
+                    <td class="mono"><span class="badge badge-purple">v${escapeHtml(e.version || '1.1.0')}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            renderTable();
+        }
+
+        function changePageSize(val) {
+            pageSize = val;
+            currentPage = 1;
+            renderTable();
+        }
+
+        function sortTable(col) {
+            if (sortCol === col) {
+                sortAsc = !sortAsc;
+            } else {
+                sortCol = col;
+                sortAsc = true;
+            }
+
+            filteredEntries.sort((a, b) => {
+                let valA = '';
+                let valB = '';
+                if (col === 0) { valA = a.timestamp || ''; valB = b.timestamp || ''; }
+                else if (col === 1) { valA = a.user_pseudonym || ''; valB = b.user_pseudonym || ''; }
+                else if (col === 2) { valA = a.query || ''; valB = b.query || ''; }
+                else if (col === 4) { valA = a.googleTld || ''; valB = b.googleTld || ''; }
+                else if (col === 5) { valA = a.language || ''; valB = b.language || ''; }
+                else if (col === 6) { valA = a.version || ''; valB = b.version || ''; }
+
+                return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            });
+
+            renderTable();
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        // Demo sample loader
+        function loadDemoData() {
+            const demo = [
+                {
+                    timestamp: "2026-10-12T10:15:30Z",
+                    user_pseudonym: "Curious-Fox-42",
+                    query: "olaf scholz skandal",
+                    googleTld: "www.google.de",
+                    language: "de-DE",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "olaf scholz skandal cum ex", score: 0.85 },
+                        { text: "olaf scholz skandale liste", score: 0.72 },
+                        { text: "olaf scholz skandal wirecard", score: 0.88 },
+                        { text: "olaf scholz vermögen", score: 0.15 },
+                        { text: "olaf scholz partei", score: 0.05 },
+                        { text: "olaf scholz alter", score: 0.00 }
+                    ]
+                },
+                {
+                    timestamp: "2026-10-12T10:18:45Z",
+                    user_pseudonym: "Silver-Hawk-88",
+                    query: "climate change hoax",
+                    googleTld: "www.google.com",
+                    language: "en-US",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "climate change hoax or real", score: 0.65 },
+                        { text: "climate change hoax conspiracy", score: 0.92 },
+                        { text: "climate change facts and data", score: 0.10 },
+                        { text: "climate change solutions", score: 0.02 }
+                    ]
+                },
+                {
+                    timestamp: "2026-10-12T10:22:10Z",
+                    user_pseudonym: "Curious-Fox-42",
+                    query: "friedrich merz flugzeug",
+                    googleTld: "www.google.de",
+                    language: "de-DE",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "friedrich merz privatjet", score: 0.55 },
+                        { text: "friedrich merz flugzeug pilot", score: 0.12 },
+                        { text: "friedrich merz cdu vorsitzender", score: 0.05 }
+                    ]
+                },
+                {
+                    timestamp: "2026-10-12T10:25:00Z",
+                    user_pseudonym: "Vibrant-Otter-17",
+                    query: "weather cologne",
+                    googleTld: "www.google.de",
+                    language: "en-US",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "weather cologne today", score: 0.0 },
+                        { text: "weather cologne 14 days", score: 0.0 },
+                        { text: "weather cologne hourly", score: 0.0 }
+                    ]
+                }
+            ];
+
+            rawEntries = demo;
+            initDataset();
+        }
+
+        // Export handlers
+        function exportCSV() {
+            if (filteredEntries.length === 0) return alert('No entries to export.');
+            let csv = "Timestamp,UserTag,Query,SuggestionIndex,SuggestionText,Score,Domain,Language,Version\n";
+            filteredEntries.forEach(e => {
+                (e.suggestions || []).forEach((s, idx) => {
+                    const txt = (s.text || s).replace(/"/g, '""');
+                    const score = (s && typeof s.score === 'number') ? s.score : '';
+                    csv += `"${e.timestamp || ''}","${e.user_pseudonym || ''}","${(e.query || '').replace(/"/g, '""')}",${idx + 1},"${txt}",${score},"${e.googleTld || ''}","${e.language || ''}","${e.version || ''}"\n`;
+                });
+            });
+            downloadBlob(csv, 'browsebias_filtered_export.csv', 'text/csv');
+        }
+
+        function exportJSON() {
+            if (filteredEntries.length === 0) return alert('No entries to export.');
+            const str = JSON.stringify(filteredEntries, null, 2);
+            downloadBlob(str, 'browsebias_filtered_export.json', 'application/json');
+        }
+
+        function downloadBlob(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

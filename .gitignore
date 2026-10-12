@@ -1,0 +1,45 @@
+# Environment & Secrets (NEVER COMMIT)
+.env
+*.env
+.env.*
+*.key
+*.pem
+
+# Python & Caching
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+*.zip
+
+# Backups & Data Archives
+data_backup_archive/
+_data_backup/
+*.bak*
+
+# Server Dynamic Datasets (Keep default template/seeds, ignore live collections)
+server/data/*.jsonl
+server/data/*.bak*
+server/data/engine_state/*
+!server/data/engine_state/.gitkeep
+
+# Collector browser cache & user data
+collector/browser_profile/
+browser_profile/
+.politicians_cache.json
+*.log
+
+# macOS & System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
