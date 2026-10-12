@@ -1,0 +1,63 @@
+{
+  "last_checked": "2026-10-12",
+  "days_old": 0,
+  "models": [
+    {
+      "id": "mistralai-mistral-small-4-119b-2603",
+      "name": "Mistralai Mistral Small 4 119B 2603",
+      "recommended": true,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "openai-gpt5.4-mini",
+      "name": "Openai Gpt5.4 Mini",
+      "recommended": true,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "qwen3-omni-30b-a3b-instruct",
+      "name": "Qwen3 Omni 30B A3B Instruct",
+      "recommended": true,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "e5-mistral-7b-instruct",
+      "name": "E5 Mistral 7B Instruct",
+      "recommended": false,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "glm-4.7",
+      "name": "Glm 4.7",
+      "recommended": false,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "openai-gpt-oss-120b",
+      "name": "Openai Gpt Oss 120B",
+      "recommended": false,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "openai-gpt5.5",
+      "name": "Openai Gpt5.5",
+      "recommended": false,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    },
+    {
+      "id": "qwen3.5-397b-a17b",
+      "name": "Qwen3.5 397B A17B",
+      "recommended": false,
+      "created": 1791804744,
+      "owned_by": "th-koeln.de"
+    }
+  ],
+  "source": "live_api"
+}

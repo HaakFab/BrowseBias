@@ -55,6 +55,13 @@ except Exception as _e:
     HAS_BIAS_ENGINE = False
     print(f"Notice: BiasEngine module import: {_e}")
 
+# Check THKI models freshness (< 2 weeks) on server startup
+try:
+    from bias_engine.thki_discovery import check_and_update_thki_models
+    check_and_update_thki_models(data_dir=Path(DATA_DIR))
+except Exception as _disc_err:
+    print(f"Notice: THKI model discovery startup check: {_disc_err}")
+
 
 def clean_suggestion_text(raw_text: str) -> str:
     """Sanitize suggestion text by removing embedded CSS or trailing UI button text."""
@@ -134,6 +141,14 @@ def load_lexicon():
 
 # ─── Rating Job Management ──────────────────────────────────────────
 RATING_STATE_LOCK = threading.Lock()
+
+def _get_initial_model():
+    if os.environ.get("THKI_KEY"):
+        return "openai-gpt5.4-mini"
+    if os.environ.get("GOOGLE_API_KEY"):
+        return "gemini-3.5-flash-lite"
+    return "openai-gpt5.4-mini"
+
 RATING_STATE = {
     "is_running": False,
     "mode": "incremental",
@@ -145,7 +160,8 @@ RATING_STATE = {
     "elapsed_seconds": 0,
     "error": None,
     "result": None,
-    "model": "gemini-3.1-flash-lite",
+    "provider": "thki" if os.environ.get("THKI_KEY") else "gemini",
+    "model": _get_initial_model(),
     "logs": []
 }
 
@@ -171,15 +187,19 @@ def on_rating_progress(event: dict):
             RATING_STATE["logs"] = RATING_STATE["logs"][-300:]
 
 
-def run_rating_job_thread(mode: str):
+def run_rating_job_thread(mode: str, provider: str = None, model: str = None):
     global RATING_STATE
     start_ts = datetime.utcnow()
     with RATING_STATE_LOCK:
         RATING_STATE["is_running"] = True
         RATING_STATE["mode"] = mode
+        if provider:
+            RATING_STATE["provider"] = provider
+        if model:
+            RATING_STATE["model"] = model
         RATING_STATE["stage"] = "normalizing"
         RATING_STATE["progress"] = 5
-        RATING_STATE["message"] = f"Starting {mode} rating pipeline..."
+        RATING_STATE["message"] = f"Starting {mode} rating pipeline ({RATING_STATE['model']})..."
         RATING_STATE["started_at"] = start_ts.isoformat() + "Z"
         RATING_STATE["completed_at"] = None
         RATING_STATE["elapsed_seconds"] = 0
@@ -189,7 +209,7 @@ def run_rating_job_thread(mode: str):
             "timestamp": start_ts.isoformat() + "Z"[:19],
             "stage": "starting",
             "progress": 5,
-            "message": f"🚀 Initializing {mode} rating pipeline..."
+            "message": f"🚀 Initializing {mode} rating pipeline with model: {RATING_STATE['model']} (Provider: {RATING_STATE['provider']})..."
         }]
 
     try:
@@ -197,10 +217,11 @@ def run_rating_job_thread(mode: str):
             raise RuntimeError("BiasEngine module is not available in Python environment.")
 
         cfg = EngineConfig(data_dir=DATA_DIR)
-        engine = BiasEngine(config=cfg)
+        engine = BiasEngine(config=cfg, provider=provider, model=model)
 
         with RATING_STATE_LOCK:
             RATING_STATE["model"] = engine.primary_llm.model
+            RATING_STATE["provider"] = provider or getattr(engine.primary_llm, "name", "")
 
         res = engine.run_pipeline(
             mode=mode,
@@ -215,7 +236,7 @@ def run_rating_job_thread(mode: str):
             RATING_STATE["completed_at"] = datetime.utcnow().isoformat() + "Z"
             RATING_STATE["elapsed_seconds"] = res.get("elapsed_seconds", 0)
             RATING_STATE["result"] = res
-            RATING_STATE["message"] = f"✅ {mode.capitalize()} rating completed in {res.get('elapsed_seconds', 0)}s!"
+            RATING_STATE["message"] = f"✅ {mode.capitalize()} rating completed in {res.get('elapsed_seconds', 0)}s ({RATING_STATE['model']})!"
     except Exception as e:
         with RATING_STATE_LOCK:
             RATING_STATE["is_running"] = False
@@ -1322,6 +1343,63 @@ DASHBOARD_HTML = """
     <!-- ════════════════════════════════════════════════════════════════ -->
     <div id="tab-ratings" class="tab-pane">
         
+        <!-- Scientific Two-Stage Model Selector -->
+        <div class="section-box" style="margin-bottom: 16px; border: 1px solid rgba(88, 166, 255, 0.3); background: rgba(22, 27, 34, 0.95);">
+            <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px;">🔬 <strong>Scientific Model Selector</strong> (Single Model Provenance)</span>
+                    <span class="badge badge-purple" style="font-size: 10px;">Two-Stage</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="model-status-indicator" class="badge badge-green" style="font-size: 11px;">✓ Ready</span>
+                    <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="loadModelCatalog(true)">
+                        🔄 Check / Refresh Models
+                    </button>
+                </div>
+            </div>
+            
+            <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 12px;">
+                To guarantee scientific reproducibility, each rating run strictly attributes all suggestion tags, matchmaking matrices, and Bradley-Terry pairwise comparisons to <strong>one chosen model</strong>. Providers configured in your <code>.env</code> file are highlighted below.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start;">
+                <!-- Stage 1: Family / Provider -->
+                <div style="background: var(--bg-base); padding: 12px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">
+                        Stage 1: Provider Family
+                    </label>
+                    <select id="selector-provider" class="select-input" style="width: 100%; padding: 8px; font-size: 12.5px;" onchange="onProviderChange()">
+                        <option value="thki">🎓 TH Köln KI Connect (Free Campus LLM) [Loading...]</option>
+                        <option value="gemini">🌐 Google Gemini [Loading...]</option>
+                        <option value="openai">🤖 OpenAI Cloud</option>
+                        <option value="local">💻 Local / Ollama (Self-Hosted)</option>
+                    </select>
+                    <div id="provider-env-note" style="margin-top: 6px; font-size: 11px; color: var(--accent-green); display: flex; align-items: center; gap: 4px;">
+                        <span>Loading provider details...</span>
+                    </div>
+                </div>
+
+                <!-- Stage 2: Specific Model -->
+                <div style="background: var(--bg-base); padding: 12px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">
+                            Stage 2: Target Model
+                        </label>
+                        <span id="model-last-checked-label" class="mono" style="font-size: 10.5px; color: var(--text-muted);">Last checked: —</span>
+                    </div>
+                    <select id="selector-model" class="select-input" style="width: 100%; padding: 8px; font-size: 12.5px; font-family: var(--font-mono);" onchange="onModelChange()">
+                        <!-- Populated dynamically via JS -->
+                    </select>
+                    <div id="model-custom-wrap" style="display: none; margin-top: 8px;">
+                        <input type="text" id="selector-custom-model" class="search-input" style="width: 100%;" placeholder="Enter model name (e.g. llama3.2)...">
+                    </div>
+                    <div id="model-desc-note" style="margin-top: 6px; font-size: 11px; color: var(--text-secondary);">
+                        Model ready for scientific rating execution.
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Action Cards Grid -->
         <div class="rating-card-grid">
             <div class="rating-action-card">
@@ -1483,7 +1561,7 @@ DASHBOARD_HTML = """
                                         <span class="badge badge-gray">{{ run.get('status', 'N/A') }}</span>
                                     {% endif %}
                                 </td>
-                                <td class="mono" style="color: #fff;">{{ run.get('model', 'gemini-3.1-flash-lite') }}</td>
+                                <td class="mono" style="color: #fff;">{{ run.get('model', 'gemini-3.5-flash-lite') }}</td>
                                 <td class="mono" style="font-weight: 600; color: var(--accent-blue);">
                                     {% if run.get('comparisons_added') is defined %}
                                         +{{ run.get('comparisons_added') }} comparisons
@@ -1861,6 +1939,150 @@ async function triggerUpdateUploads() {
     }
 }
 
+// ─── Two-Stage Model Selector Management ─────────────────────────────
+let modelCatalogData = null;
+
+async function loadModelCatalog(forceRefresh = false) {
+    const statusEl = document.getElementById('model-status-indicator');
+    if (statusEl) {
+        statusEl.className = 'badge badge-yellow';
+        statusEl.textContent = forceRefresh ? '⏳ Refreshing...' : '⏳ Loading...';
+    }
+
+    try {
+        const url = forceRefresh ? '/api/models/refresh' : '/api/models/available';
+        const method = forceRefresh ? 'POST' : 'GET';
+        const res = await fetch(url, { method });
+        const data = await res.json();
+        
+        if (forceRefresh) {
+            const catRes = await fetch('/api/models/available');
+            modelCatalogData = await catRes.json();
+        } else {
+            modelCatalogData = data;
+        }
+
+        renderModelSelector();
+        if (statusEl) {
+            statusEl.className = 'badge badge-green';
+            statusEl.textContent = '✓ Ready';
+        }
+    } catch (err) {
+        console.error('Failed to load model catalog:', err);
+        if (statusEl) {
+            statusEl.className = 'badge badge-red';
+            statusEl.textContent = '⚠️ Check Failed';
+        }
+    }
+}
+
+function renderModelSelector() {
+    if (!modelCatalogData || !modelCatalogData.providers) return;
+
+    const providerSelect = document.getElementById('selector-provider');
+    if (!providerSelect) return;
+
+    const currentVal = providerSelect.value || modelCatalogData.default_provider;
+    providerSelect.innerHTML = modelCatalogData.providers.map(p => {
+        const keyTag = p.has_key ? ' [✓ Key Active]' : ' [No key in .env]';
+        let icon = '🤖';
+        if (p.id === 'thki') icon = '🎓';
+        else if (p.id === 'gemini') icon = '🌐';
+        else if (p.id === 'local') icon = '💻';
+
+        return `<option value="${p.id}" ${p.id === currentVal ? 'selected' : ''}>
+            ${icon} ${p.name} (${p.badge})${keyTag}
+        </option>`;
+    }).join('');
+
+    onProviderChange();
+}
+
+function onProviderChange() {
+    const providerSelect = document.getElementById('selector-provider');
+    const modelSelect = document.getElementById('selector-model');
+    const envNote = document.getElementById('provider-env-note');
+    const lastCheckedLabel = document.getElementById('model-last-checked-label');
+    const customWrap = document.getElementById('model-custom-wrap');
+
+    if (!modelCatalogData || !providerSelect || !modelSelect) return;
+
+    const pId = providerSelect.value;
+    const provider = modelCatalogData.providers.find(p => p.id === pId);
+    if (!provider) return;
+
+    // Update env note
+    if (provider.has_key) {
+        envNote.style.color = 'var(--accent-green)';
+        envNote.innerHTML = `<span>✓ Key active: <code>${provider.key_env}</code> configured in environment.</span>`;
+    } else if (pId === 'local') {
+        envNote.style.color = 'var(--accent-blue)';
+        envNote.innerHTML = `<span>💻 Local inference via OpenAI-compatible endpoint (e.g. Ollama / vLLM).</span>`;
+    } else {
+        envNote.style.color = 'var(--accent-yellow)';
+        envNote.innerHTML = `<span>⚠️ <code>${provider.key_env}</code> not configured in <code>.env</code>.</span>`;
+    }
+
+    // Update last checked
+    if (pId === 'thki' && modelCatalogData.thki_last_checked) {
+        const days = modelCatalogData.thki_days_old !== undefined ? `${modelCatalogData.thki_days_old}d ago` : '';
+        lastCheckedLabel.textContent = `Checked: ${modelCatalogData.thki_last_checked} (${days})`;
+    } else {
+        lastCheckedLabel.textContent = 'Provider: ' + provider.name;
+    }
+
+    // Populate models
+    modelSelect.innerHTML = (provider.models || []).map(m => {
+        const recTag = m.recommended ? ' ⭐ [Recommended]' : '';
+        return `<option value="${m.id}">${m.name || m.id}${recTag}</option>`;
+    }).join('');
+
+    if (pId === 'local') {
+        customWrap.style.display = 'block';
+    } else {
+        customWrap.style.display = 'none';
+    }
+
+    onModelChange();
+}
+
+function onModelChange() {
+    const providerSelect = document.getElementById('selector-provider');
+    const modelSelect = document.getElementById('selector-model');
+    const descNote = document.getElementById('model-desc-note');
+
+    if (!modelCatalogData || !providerSelect || !modelSelect || !descNote) return;
+
+    const pId = providerSelect.value;
+    const mId = modelSelect.value;
+    const provider = modelCatalogData.providers.find(p => p.id === pId);
+    if (!provider) return;
+
+    const modelObj = (provider.models || []).find(m => m.id === mId);
+    if (modelObj && modelObj.note) {
+        descNote.textContent = modelObj.note;
+    } else if (modelObj && modelObj.recommended) {
+        descNote.textContent = 'Recommended high-performance model for research ratings.';
+    } else {
+        descNote.textContent = `Target model: ${mId}. Strictly attributed for this rating run.`;
+    }
+}
+
+function getSelectedProvider() {
+    const el = document.getElementById('selector-provider');
+    return el ? el.value : 'thki';
+}
+
+function getSelectedModel() {
+    const p = getSelectedProvider();
+    if (p === 'local') {
+        const customEl = document.getElementById('selector-custom-model');
+        if (customEl && customEl.value.trim()) return customEl.value.trim();
+    }
+    const el = document.getElementById('selector-model');
+    return el ? el.value : 'openai-gpt5.4-mini';
+}
+
 // ─── Rating Engine Trigger & Live Polling ───────────────────────────
 let pollInterval = null;
 
@@ -1874,7 +2096,11 @@ async function triggerRating(mode) {
         const res = await fetch('/api/ratings/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: mode })
+            body: JSON.stringify({
+                type: mode,
+                provider: getSelectedProvider(),
+                model: getSelectedModel()
+            })
         });
         const data = await res.json();
         if (res.ok) {
@@ -2000,7 +2226,7 @@ async function refreshHistoryTable() {
                     <td class="mono">${(run.timestamp || '').slice(0, 19)}</td>
                     <td>${taskBadge}</td>
                     <td>${statusBadge}</td>
-                    <td class="mono" style="color: #fff;">${run.model || 'gemini-3.1-flash-lite'}</td>
+                    <td class="mono" style="color: #fff;">${run.model || 'gemini-3.5-flash-lite'}</td>
                     <td class="mono" style="font-weight: 600; color: var(--accent-blue);">${comps}</td>
                     <td class="mono">${templates}</td>
                     <td class="mono">${total}</td>
@@ -2017,6 +2243,9 @@ async function refreshHistoryTable() {
 {% if rating_state.is_running %}
 startPollingRating();
 {% endif %}
+
+// Initialize model catalog on load
+loadModelCatalog();
 </script>
 </body>
 </html>
@@ -2024,6 +2253,106 @@ startPollingRating();
 
 
 # ─── API Endpoints ───────────────────────────────────────────────────
+
+
+@app.route('/api/models/available', methods=['GET'])
+def get_available_models():
+    """Return catalog of available models grouped by provider with env key status."""
+    has_thki_key = bool(os.environ.get("THKI_KEY"))
+    has_gemini_key = bool(os.environ.get("GOOGLE_API_KEY"))
+    has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
+
+    # Discover / retrieve THKI models
+    thki_info = {"last_checked": "unknown", "models": []}
+    try:
+        from bias_engine.thki_discovery import check_and_update_thki_models
+        thki_info = check_and_update_thki_models(data_dir=Path(DATA_DIR))
+    except Exception as e:
+        thki_info = {"error": str(e), "models": []}
+
+    thki_models = thki_info.get("models", [])
+    if not thki_models:
+        thki_models = [
+            {"id": "openai-gpt5.4-mini", "name": "OpenAI GPT-5.4 Mini", "recommended": True},
+            {"id": "mistralai-mistral-small-4-119b-2603", "name": "Mistral Small 4 119B", "recommended": True},
+            {"id": "qwen3-omni-30b-a3b-instruct", "name": "Qwen 3 Omni 30B", "recommended": True},
+        ]
+
+    providers = [
+        {
+            "id": "thki",
+            "name": "TH Köln KI Connect",
+            "badge": "Free Campus LLM",
+            "has_key": has_thki_key,
+            "key_env": "THKI_KEY",
+            "last_checked": thki_info.get("last_checked", "unknown"),
+            "models": thki_models
+        },
+        {
+            "id": "gemini",
+            "name": "Google Gemini",
+            "badge": "Google Cloud",
+            "has_key": has_gemini_key,
+            "key_env": "GOOGLE_API_KEY",
+            "models": [
+                {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash Lite", "recommended": True, "note": "Latest fast lite model"},
+                {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "recommended": False},
+                {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "recommended": False}
+            ]
+        },
+        {
+            "id": "openai",
+            "name": "OpenAI Cloud",
+            "badge": "Commercial API",
+            "has_key": has_openai_key,
+            "key_env": "OPENAI_API_KEY",
+            "models": [
+                {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "recommended": True},
+                {"id": "gpt-4o", "name": "GPT-4o", "recommended": False}
+            ]
+        },
+        {
+            "id": "local",
+            "name": "Local / Ollama",
+            "badge": "Self-Hosted",
+            "has_key": bool(os.environ.get("LOCAL_LLM_BASE_URL")),
+            "key_env": "LOCAL_LLM_BASE_URL",
+            "models": [
+                {"id": "llama3.2", "name": "Llama 3.2", "recommended": True},
+                {"id": "mistral", "name": "Mistral 7B", "recommended": False},
+                {"id": "custom", "name": "Custom Model (via LOCAL_LLM_BASE_URL)", "recommended": False}
+            ]
+        }
+    ]
+
+    default_provider = "thki" if has_thki_key else ("gemini" if has_gemini_key else "local")
+    default_model = "openai-gpt5.4-mini" if has_thki_key else ("gemini-3.5-flash-lite" if has_gemini_key else "llama3.2")
+
+    return jsonify({
+        "providers": providers,
+        "default_provider": default_provider,
+        "default_model": default_model,
+        "thki_last_checked": thki_info.get("last_checked", "unknown"),
+        "thki_days_old": thki_info.get("days_old", 0)
+    })
+
+
+@app.route('/api/models/refresh', methods=['POST'])
+def refresh_models():
+    """Force fresh check of THKI models from API."""
+    try:
+        from bias_engine.thki_discovery import check_and_update_thki_models
+        res = check_and_update_thki_models(data_dir=Path(DATA_DIR), force=True)
+        return jsonify({
+            "status": "ok",
+            "message": f"Successfully updated THKI models ({len(res.get('models', []))} models found).",
+            "data": res
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 
 @app.route('/api/ratings/start', methods=['POST'])
@@ -2042,7 +2371,10 @@ def start_rating_job():
     if mode not in ["initial", "incremental"]:
         mode = "incremental"
 
-    thread = threading.Thread(target=run_rating_job_thread, args=(mode,), daemon=True)
+    provider = data.get("provider")
+    model = data.get("model")
+
+    thread = threading.Thread(target=run_rating_job_thread, args=(mode, provider, model), daemon=True)
     thread.start()
 
     with RATING_STATE_LOCK:
@@ -2051,7 +2383,9 @@ def start_rating_job():
     return jsonify({
         "status": "started",
         "mode": mode,
-        "message": f"Started {mode} rating job in background.",
+        "provider": provider,
+        "model": model,
+        "message": f"Started {mode} rating job in background with {model or current_job['model']}.",
         "job": current_job
     }), 200
 

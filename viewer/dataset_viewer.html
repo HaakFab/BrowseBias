@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BrowseBias — Standalone Dataset Viewer (v1.1.0 Silurian)</title>
+    <title>BrowseBias — Standalone Research Dataset Viewer (v1.1.0 Silurian)</title>
     <style>
         :root {
             --bg-base: #0d1117;
@@ -35,6 +35,7 @@
             min-height: 100vh;
         }
 
+        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
@@ -42,6 +43,8 @@
             border-bottom: 1px solid var(--border-default);
             padding-bottom: 12px;
             margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
         }
         .header-title {
             display: flex;
@@ -65,12 +68,45 @@
             font-family: var(--font-mono);
         }
 
+        /* Main Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 4px;
+            border-bottom: 1px solid var(--border-default);
+            margin-bottom: 16px;
+            overflow-x: auto;
+        }
+        .nav-tab {
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 9px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .nav-tab:hover {
+            color: var(--text-primary);
+            border-bottom-color: var(--border-default);
+        }
+        .nav-tab.active {
+            color: #fff;
+            border-bottom-color: var(--accent-blue);
+            background: rgba(88, 166, 255, 0.05);
+        }
+
         /* Drop Zone */
         .dropzone-container {
             background: var(--bg-surface);
             border: 2px dashed var(--border-default);
             border-radius: 8px;
-            padding: 24px;
+            padding: 20px;
             text-align: center;
             margin-bottom: 16px;
             transition: all 0.2s ease;
@@ -78,23 +114,24 @@
         }
         .dropzone-container.dragover {
             border-color: var(--accent-blue);
-            background: rgba(88, 166, 255, 0.05);
+            background: rgba(88, 166, 255, 0.06);
         }
         .dropzone-title {
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             color: var(--text-primary);
         }
         .dropzone-desc {
             color: var(--text-secondary);
             font-size: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
         .dropzone-actions {
             display: flex;
             justify-content: center;
             gap: 10px;
+            flex-wrap: wrap;
         }
 
         /* Buttons */
@@ -122,12 +159,10 @@
             color: #fff;
             border-color: rgba(240,246,252,0.1);
         }
-        .btn-primary:hover {
-            background: #2ea043;
-        }
-        .btn-secondary {
-            background: var(--bg-elevated);
-        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: var(--bg-elevated); }
+        .btn-subtle { background: transparent; border-color: transparent; color: var(--accent-blue); }
+        .btn-subtle:hover { background: rgba(88, 166, 255, 0.1); }
 
         /* Stat Cards */
         .card-grid {
@@ -197,7 +232,7 @@
             cursor: pointer;
         }
 
-        /* Table */
+        /* Tables */
         .table-responsive {
             width: 100%;
             overflow-x: auto;
@@ -244,16 +279,18 @@
         }
         .badge-blue { background: rgba(88, 166, 255, 0.15); color: #79c0ff; border: 1px solid rgba(88, 166, 255, 0.25); }
         .badge-purple { background: rgba(188, 140, 255, 0.15); color: #d2a8ff; border: 1px solid rgba(188, 140, 255, 0.25); }
+        .badge-green { background: rgba(63, 185, 80, 0.15); color: #7ee787; border: 1px solid rgba(63, 185, 80, 0.25); }
         .badge-gray { background: rgba(110, 118, 129, 0.15); color: #8b949e; border: 1px solid rgba(110, 118, 129, 0.25); }
         .badge-red { background: rgba(248, 81, 73, 0.15); color: #ff7b72; border: 1px solid rgba(248, 81, 73, 0.25); }
         .badge-yellow { background: rgba(210, 153, 34, 0.15); color: #e3b341; border: 1px solid rgba(210, 153, 34, 0.25); }
         .mono { font-family: var(--font-mono); font-size: 11.5px; }
 
+        /* Autocomplete Suggestions Chips */
         .sugg-container {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
-            max-width: 650px;
+            max-width: 680px;
         }
         .sugg-chip {
             display: inline-flex;
@@ -277,9 +314,7 @@
             font-family: var(--font-mono);
             font-weight: 700;
         }
-        .sugg-txt {
-            color: var(--text-primary);
-        }
+        .sugg-txt { color: var(--text-primary); }
         .sugg-chip.biased {
             background: rgba(248, 81, 73, 0.12);
             border-color: rgba(248, 81, 73, 0.35);
@@ -287,6 +322,80 @@
         .sugg-chip.biased .sugg-txt {
             color: #ffa198;
             font-weight: 500;
+        }
+
+        /* Bias Score Visual Heatbar */
+        .heatbar-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 140px;
+        }
+        .heatbar-track {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-subtle);
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid var(--border-muted);
+        }
+        .heatbar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        /* Category Filter Pills */
+        .cat-pills {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .cat-pill {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            color: var(--text-secondary);
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .cat-pill:hover {
+            color: var(--text-primary);
+            border-color: var(--border-muted);
+            background: var(--bg-elevated);
+        }
+        .cat-pill.active {
+            background: rgba(88, 166, 255, 0.15);
+            border-color: var(--accent-blue);
+            color: #fff;
+        }
+
+        /* Category Banner */
+        .cat-banner {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-left: 4px solid var(--accent-blue);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+        }
+        .cat-banner-title {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .cat-banner-desc {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         /* Pagination */
@@ -301,6 +410,43 @@
             display: flex;
             gap: 6px;
         }
+
+        /* Tab Panes */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        /* Chart Bar */
+        .stat-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .stat-bar-label {
+            width: 130px;
+            color: var(--text-secondary);
+            text-align: right;
+            font-weight: 500;
+        }
+        .stat-bar-track {
+            flex: 1;
+            height: 14px;
+            background: var(--bg-surface);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-default);
+        }
+        .stat-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+        .stat-bar-val {
+            width: 60px;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -309,116 +455,431 @@
     <div class="header">
         <div class="header-title">
             <h1>BrowseBias Dataset Viewer</h1>
-            <span class="tag-badge">Offline Standalone · v1.1.0 [Silurian]</span>
+            <span class="tag-badge">v1.1.0 Silurian</span>
+            <span class="badge badge-purple">Research Edition</span>
         </div>
-        <div>
-            <button class="btn btn-secondary" onclick="exportCSV()">📤 Export CSV</button>
-            <button class="btn btn-secondary" onclick="exportJSON()">📤 Export JSON</button>
-            <button class="btn btn-primary" onclick="loadDemoData()">✨ Load Demo Sample</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-secondary" onclick="exportCurrentViewCSV()">📥 Export CSV</button>
+            <button class="btn btn-secondary" onclick="exportCurrentViewJSON()">📥 Export JSON</button>
         </div>
     </div>
 
     <!-- Drag & Drop Zone -->
-    <div id="dropzone" class="dropzone-container" onclick="document.getElementById('file-input').click()">
-        <input type="file" id="file-input" style="display: none;" accept=".jsonl,.json,.txt" onchange="handleFileSelect(event)">
-        <div class="dropzone-title">📂 Drag &amp; Drop <code>suggestions.jsonl</code> or <code>uploads.jsonl</code> here</div>
-        <div class="dropzone-desc">Or click to browse from your computer. Files are processed entirely offline in your browser.</div>
+    <div class="dropzone-container" id="dropzone">
+        <div class="dropzone-title">📂 Load Research Datasets (Drag &amp; Drop or Select)</div>
+        <div class="dropzone-desc">
+            Supports <code>suggestions.jsonl</code>, <code>uploads.jsonl</code>, <code>reports.jsonl</code>, and <code>lexicon.json</code>.
+            Extract from <code>browsebias_dataset_bundle.zip</code> or load the built-in sample.
+        </div>
         <div class="dropzone-actions">
-            <span class="btn btn-secondary" style="pointer-events: none;">Select Local File</span>
+            <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(event)" accept=".jsonl,.json,.csv">
+            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📁 Browse Dataset File</button>
+            <button class="btn btn-secondary" onclick="loadDemoData()">⚡ Load Realistic Audit Sample</button>
         </div>
     </div>
 
-    <!-- Telemetry Cards -->
-    <div class="card-grid">
-        <div class="card">
-            <div class="card-value" id="card-queries">0</div>
-            <div class="card-label">Queries Loaded</div>
+    <!-- Main Navigation Tabs -->
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="switchMainTab('searches')">
+            <span>🔍 Autocomplete Searches</span>
+            <span id="tab-count-searches" class="badge badge-gray">0</span>
+        </button>
+        <button class="nav-tab" onclick="switchMainTab('categories')">
+            <span>⚖️ Bias Dimensions &amp; Lexicon</span>
+            <span id="tab-count-categories" class="badge badge-purple">0</span>
+        </button>
+        <button class="nav-tab" onclick="switchMainTab('reports')">
+            <span>📋 Participant Reports &amp; Feedback</span>
+            <span id="tab-count-reports" class="badge badge-yellow">0</span>
+        </button>
+        <button class="nav-tab" onclick="switchMainTab('stats')">
+            <span>📊 Numbers &amp; Cohort Statistics</span>
+        </button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 1: AUTOCOMPLETE SEARCHES                                      -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-searches" class="tab-pane active">
+        <!-- Telemetry Cards -->
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-value" id="card-queries">0</div>
+                <div class="card-label">Queries Loaded</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-suggestions">0</div>
+                <div class="card-label">Total Suggestions</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-biased-pct">0.0%</div>
+                <div class="card-label">Biased Ratio (&ge; 0.35)</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-cohorts">0</div>
+                <div class="card-label">Auditor Cohorts / Tags</div>
+            </div>
         </div>
-        <div class="card">
-            <div class="card-value" id="card-suggestions">0</div>
-            <div class="card-label">Total Suggestions</div>
+
+        <!-- Toolbar Filters -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <input type="text" id="filter-search" class="search-input" placeholder="🔍 Search query, suggestion, user tag..." oninput="applySearchFilters()">
+                <select id="filter-user" class="select-input" onchange="applySearchFilters()">
+                    <option value="">All Cohort Tags</option>
+                </select>
+                <select id="filter-bias" class="select-input" onchange="applySearchFilters()">
+                    <option value="all">All Bias Levels</option>
+                    <option value="biased">Biased Only (&ge; 0.35)</option>
+                    <option value="high">High Bias Only (&ge; 0.65)</option>
+                    <option value="neutral">Neutral Only (&lt; 0.35)</option>
+                </select>
+                <select id="filter-domain" class="select-input" onchange="applySearchFilters()">
+                    <option value="">All Domains</option>
+                </select>
+            </div>
+            <div class="toolbar-group">
+                <span id="showing-indicator" class="mono" style="color: var(--text-secondary);">0 entries</span>
+                <select id="page-size-select" class="select-input" onchange="changePageSize(this.value)">
+                    <option value="50">50 per page</option>
+                    <option value="100" selected>100 per page</option>
+                    <option value="250">250 per page</option>
+                    <option value="all">Show All</option>
+                </select>
+            </div>
         </div>
-        <div class="card">
-            <div class="card-value" id="card-biased-pct">0.0%</div>
-            <div class="card-label">Biased Ratio (&ge; 0.35)</div>
+
+        <!-- Searches Table -->
+        <div class="table-responsive">
+            <table id="viewer-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortSearchTable(0)">Timestamp ⇅</th>
+                        <th onclick="sortSearchTable(1)">Auditor / Cohort Tag ⇅</th>
+                        <th onclick="sortSearchTable(2)">Query ⇅</th>
+                        <th>Autocomplete Suggestions (#1 to #10 with Scores)</th>
+                        <th onclick="sortSearchTable(4)">Domain ⇅</th>
+                        <th onclick="sortSearchTable(5)">Lang ⇅</th>
+                        <th onclick="sortSearchTable(6)">Version ⇅</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            No dataset loaded yet. Drag and drop <code>suggestions.jsonl</code> or click "Load Realistic Audit Sample" above.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
-        <div class="card">
-            <div class="card-value" id="card-cohorts">0</div>
-            <div class="card-label">Unique User Tags / Cohorts</div>
+
+        <!-- Pagination Controls -->
+        <div class="pagination">
+            <div id="page-info">Page 1 of 1</div>
+            <div class="page-controls">
+                <button class="btn btn-secondary" id="btn-prev" onclick="changePage(-1)" disabled>◀ Previous</button>
+                <button class="btn btn-secondary" id="btn-next" onclick="changePage(1)" disabled>Next ▶</button>
+            </div>
         </div>
     </div>
 
-    <!-- Toolbar Filters -->
-    <div class="toolbar">
-        <div class="toolbar-group">
-            <input type="text" id="filter-search" class="search-input" placeholder="🔍 Search query, suggestion, user tag..." oninput="applyFilters()">
-            <select id="filter-user" class="select-input" onchange="applyFilters()">
-                <option value="">All User Tags</option>
-            </select>
-            <select id="filter-bias" class="select-input" onchange="applyFilters()">
-                <option value="all">All Bias Levels</option>
-                <option value="biased">Biased Only (&ge; 0.35)</option>
-                <option value="high">High Bias (&ge; 0.65)</option>
-                <option value="neutral">Neutral Only (&lt; 0.35)</option>
-            </select>
-            <select id="filter-domain" class="select-input" onchange="applyFilters()">
-                <option value="">All Domains</option>
-            </select>
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 2: BIAS DIMENSIONS & CATEGORIES                               -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-categories" class="tab-pane">
+        <!-- Category Filter Pills -->
+        <div class="cat-pills">
+            <button class="cat-pill active" onclick="switchCategoryFilter('all')">🌟 All Dimensions (<span id="cat-pill-count-all">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('POL')">🏛️ Political Ideology (<span id="cat-pill-count-POL">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('ACC')">⚖️ Accusation &amp; Defamation (<span id="cat-pill-count-ACC">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('CON')">👁️ Conspiracy &amp; Esotericism (<span id="cat-pill-count-CON">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('SEX')">⚧️ Sexism &amp; Gender (<span id="cat-pill-count-SEX">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('RAC')">🌍 Racism &amp; Xenophobia (<span id="cat-pill-count-RAC">0</span>)</button>
+            <button class="cat-pill" onclick="switchCategoryFilter('REL')">🕊️ Religious Bias (<span id="cat-pill-count-REL">0</span>)</button>
         </div>
-        <div class="toolbar-group">
-            <span id="showing-indicator" class="mono" style="color: var(--text-secondary);">0 entries</span>
-            <select id="page-size-select" class="select-input" onchange="changePageSize(this.value)">
-                <option value="50">50 per page</option>
-                <option value="100" selected>100 per page</option>
-                <option value="250">250 per page</option>
-                <option value="all">Show All</option>
-            </select>
+
+        <!-- Category Description Banner -->
+        <div class="cat-banner" id="cat-banner">
+            <div class="cat-banner-title" id="cat-banner-title">🌟 All Bias Dimensions Overview</div>
+            <div class="cat-banner-desc" id="cat-banner-desc">
+                Browsing all scored phrase templates and normalized suggestions across the 6 empirical bias dimensions defined in the framework.
+            </div>
+        </div>
+
+        <!-- Telemetry Cards for Categories -->
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-value" id="card-cat-count">0</div>
+                <div class="card-label">Templates Scored</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-cat-mean-score">0.00</div>
+                <div class="card-label">Mean BT Score</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-cat-high-ratio">0.0%</div>
+                <div class="card-label">High Severity (&ge; 0.65)</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-cat-flagged-dims">6</div>
+                <div class="card-label">Active Dimensions</div>
+            </div>
+        </div>
+
+        <!-- Category Table Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <input type="text" id="filter-cat-search" class="search-input" placeholder="🔍 Search template, keyword, or note..." oninput="applyCategoryFilters()">
+                <select id="filter-cat-severity" class="select-input" onchange="applyCategoryFilters()">
+                    <option value="all">All Severities</option>
+                    <option value="high">High (&ge; 0.65)</option>
+                    <option value="moderate">Moderate (0.35 – 0.65)</option>
+                    <option value="low">Low (&lt; 0.35)</option>
+                </select>
+            </div>
+            <div class="toolbar-group">
+                <span id="cat-showing-indicator" class="mono" style="color: var(--text-secondary);">0 templates</span>
+            </div>
+        </div>
+
+        <!-- Category Templates Table -->
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortCatTable(0)">Template / Phrase ⇅</th>
+                        <th onclick="sortCatTable(1)">Primary Dimension ⇅</th>
+                        <th onclick="sortCatTable(2)">Bradley-Terry Continuous Score ⇅</th>
+                        <th>Severity</th>
+                        <th>Flagged Categories</th>
+                        <th>Explanatory Note / Mouseover</th>
+                        <th onclick="sortCatTable(6)">Occurrences ⇅</th>
+                    </tr>
+                </thead>
+                <tbody id="cat-table-body">
+                    <tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No category lexicon data loaded.</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <!-- Main Table -->
-    <div class="table-responsive">
-        <table id="viewer-table">
-            <thead>
-                <tr>
-                    <th onclick="sortTable(0)">Timestamp ⇅</th>
-                    <th onclick="sortTable(1)">User / Cohort Tag ⇅</th>
-                    <th onclick="sortTable(2)">Query ⇅</th>
-                    <th>Suggestions (#1 to #10 with Bias Scores)</th>
-                    <th onclick="sortTable(4)">Domain ⇅</th>
-                    <th onclick="sortTable(5)">Lang ⇅</th>
-                    <th onclick="sortTable(6)">Version ⇅</th>
-                </tr>
-            </thead>
-            <tbody id="table-body">
-                <tr>
-                    <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
-                        No dataset loaded yet. Drag and drop a <code>suggestions.jsonl</code> file or click "Load Demo Sample" above.
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 3: PARTICIPANT REPORTS & FEEDBACK                             -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-reports" class="tab-pane">
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-value" id="card-rep-total">0</div>
+                <div class="card-label">Reports Logged</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-rep-users">0</div>
+                <div class="card-label">Reporting Participants</div>
+            </div>
+            <div class="card">
+                <div class="card-value" id="card-rep-top-cat">—</div>
+                <div class="card-label">Predominant Flag</div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Auditor / Cohort Tag</th>
+                        <th>Target Query</th>
+                        <th>Reported Suggestion</th>
+                        <th>Bias Type Flagged</th>
+                        <th>Participant Comment / Rationale</th>
+                    </tr>
+                </thead>
+                <tbody id="reports-table-body">
+                    <tr><td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">No participant reports loaded. Drop a <code>reports.jsonl</code> file or click "Load Realistic Audit Sample".</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <!-- Pagination Controls -->
-    <div class="pagination">
-        <div id="page-info">Page 1 of 1</div>
-        <div class="page-controls">
-            <button class="btn btn-secondary" id="btn-prev" onclick="changePage(-1)" disabled>◀ Previous</button>
-            <button class="btn btn-secondary" id="btn-next" onclick="changePage(1)" disabled>Next ▶</button>
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 4: AGGREGATE NUMBERS & COHORT STATISTICS                      -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-stats" class="tab-pane">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 16px;">
+            <!-- Severity Distribution Card -->
+            <div class="card">
+                <div style="font-weight: 700; color: #fff; margin-bottom: 12px; font-size: 13px;">
+                    📈 Autocomplete Suggestion Bias Distribution
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">High (&ge; 0.65)</div>
+                    <div class="stat-bar-track">
+                        <div id="bar-sev-high" class="stat-bar-fill" style="width: 0%; background: var(--accent-red);"></div>
+                    </div>
+                    <div id="val-sev-high" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">Moderate (0.35–0.65)</div>
+                    <div class="stat-bar-track">
+                        <div id="bar-sev-mod" class="stat-bar-fill" style="width: 0%; background: var(--accent-yellow);"></div>
+                    </div>
+                    <div id="val-sev-mod" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">Neutral (&lt; 0.35)</div>
+                    <div class="stat-bar-track">
+                        <div id="bar-sev-neu" class="stat-bar-fill" style="width: 0%; background: var(--accent-green);"></div>
+                    </div>
+                    <div id="val-sev-neu" class="stat-bar-val">0</div>
+                </div>
+            </div>
+
+            <!-- Bias Dimension Breakdown Card -->
+            <div class="card">
+                <div style="font-weight: 700; color: #fff; margin-bottom: 12px; font-size: 13px;">
+                    🏛️ Frequency by Bias Dimension
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">POL (Political)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-pol" class="stat-bar-fill" style="width: 0%; background: #58a6ff;"></div></div>
+                    <div id="val-dim-pol" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">ACC (Accusation)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-acc" class="stat-bar-fill" style="width: 0%; background: #bc8cff;"></div></div>
+                    <div id="val-dim-acc" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">CON (Conspiracy)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-con" class="stat-bar-fill" style="width: 0%; background: #f85149;"></div></div>
+                    <div id="val-dim-con" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">SEX (Sexism)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-sex" class="stat-bar-fill" style="width: 0%; background: #d29922;"></div></div>
+                    <div id="val-dim-sex" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">RAC (Racism)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-rac" class="stat-bar-fill" style="width: 0%; background: #ff7b72;"></div></div>
+                    <div id="val-dim-rac" class="stat-bar-val">0</div>
+                </div>
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">REL (Religious)</div>
+                    <div class="stat-bar-track"><div id="bar-dim-rel" class="stat-bar-fill" style="width: 0%; background: #3fb950;"></div></div>
+                    <div id="val-dim-rel" class="stat-bar-val">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cohort Breakdown Table -->
+        <div class="card" style="padding: 16px; margin-bottom: 16px;">
+            <div style="font-weight: 700; color: #fff; margin-bottom: 10px; font-size: 13.5px;">
+                👥 Auditor Cohort Comparison Table
+            </div>
+            <div class="table-responsive" style="margin-bottom: 0;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cohort / User Tag</th>
+                            <th>Total Queries Submitted</th>
+                            <th>Suggestions Captured</th>
+                            <th>Biased Ratio (&ge; 0.35)</th>
+                            <th>Avg Query Bias Score</th>
+                            <th>Primary TLD</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cohort-stats-body">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">No cohort data loaded.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
-        // State
+        // ─── Data Stores ─────────────────────────────────────────────────────
         let rawEntries = [];
         let filteredEntries = [];
+        let rawLexicon = [];
+        let filteredLexicon = [];
+        let rawReports = [];
+
+        let currentMainTab = 'searches';
+        let currentCategoryFilter = 'all';
+
+        // Pagination & Sorting State
         let currentPage = 1;
         let pageSize = 100;
         let sortCol = 0;
         let sortAsc = false;
 
-        // Setup Drag & Drop
+        let catSortCol = 2;
+        let catSortAsc = false;
+
+        // Taxonomy definitions for Category Banner
+        const CATEGORY_DEFINITIONS = {
+            all: {
+                title: "🌟 All Bias Dimensions Overview",
+                desc: "Viewing comprehensive multi-dimensional bias scores across all 6 core categories. Scores reflect fitted Bradley-Terry latent intensities normalized to the range [0.00, 1.00]."
+            },
+            POL: {
+                title: "🏛️ Political Ideology (POL)",
+                desc: "Identifies systemic political framing, partisan slant, political extremism, or unbalanced association with political actors and legislation."
+            },
+            ACC: {
+                title: "⚖️ Accusation & Defamation (ACC)",
+                desc: "Captures unverified legal/criminal accusations, corruption allegations, financial fraud claims, or defamatory labels attached to public or private entities."
+            },
+            CON: {
+                title: "👁️ Conspiracy & Esotericism (CON)",
+                desc: "Flags conspiracy theories, anti-scientific misinformation, pseudoscientific medical claims, or occult/esoteric narratives."
+            },
+            SEX: {
+                title: "⚧️ Sexism & Gender Bias (SEX)",
+                desc: "Detects gender stereotypes, misogynistic framing, derogatory language against sexual orientation, or gender-based discrimination."
+            },
+            RAC: {
+                title: "🌍 Racism & Xenophobia (RAC)",
+                desc: "Measures xenophobic narratives, ethnic profiling, anti-immigrant tropes, or racist stereotypes in autocomplete recommendations."
+            },
+            REL: {
+                title: "🕊️ Religious Bias (REL)",
+                desc: "Quantifies anti-religious tropes, sectarian bias, or defamatory framing targeting religious beliefs and communities."
+            }
+        };
+
+        // ─── Tab Switching ───────────────────────────────────────────────────
+        function switchMainTab(tabId) {
+            currentMainTab = tabId;
+            document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+            const targetPane = document.getElementById('tab-' + tabId);
+            if (targetPane) targetPane.classList.add('active');
+
+            const btn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
+            if (btn) btn.classList.add('active');
+
+            if (tabId === 'stats') {
+                renderStatisticsTab();
+            }
+        }
+
+        function switchCategoryFilter(catKey) {
+            currentCategoryFilter = catKey;
+            document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+            const activeBtn = Array.from(document.querySelectorAll('.cat-pill')).find(p => p.getAttribute('onclick')?.includes(`'${catKey}'`));
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const def = CATEGORY_DEFINITIONS[catKey] || CATEGORY_DEFINITIONS.all;
+            document.getElementById('cat-banner-title').textContent = def.title;
+            document.getElementById('cat-banner-desc').textContent = def.desc;
+
+            applyCategoryFilters();
+        }
+
+        // ─── Setup Drag & Drop ───────────────────────────────────────────────
         const dropzone = document.getElementById('dropzone');
         dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -449,65 +910,156 @@
             reader.readAsText(file);
         }
 
+        // ─── File Parser ─────────────────────────────────────────────────────
         function parseFileContent(text, filename) {
-            const lines = text.split('\n');
-            const entries = [];
-            let totalSugg = 0;
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
+            const trimmed = text.trim();
+            
+            // JSON File (lexicon.json)
+            if (filename.endsWith('.json') || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
                 try {
-                    const obj = JSON.parse(line);
-                    // Check if this is an upload batch or a flat suggestion or query entry
-                    if (obj.entries && Array.isArray(obj.entries)) {
-                        // Batched uploads format
-                        const batchUser = obj.user_pseudonym || obj.user_tag || 'anonymous';
-                        const batchVer = obj.version || obj.extensionVersion || '1.1.0';
-                        const batchTag = obj.v_tag || obj.versionTag || 'Silurian';
-                        obj.entries.forEach(sub => {
-                            entries.push({
-                                timestamp: sub.timestamp || obj.receivedAt || '',
-                                user_pseudonym: sub.user_pseudonym || batchUser,
-                                query: sub.query || '',
-                                suggestions: sub.suggestions || [],
-                                googleTld: sub.googleTld || '',
-                                language: sub.language || '',
-                                version: sub.version || batchVer,
-                                v_tag: sub.v_tag || batchTag
-                            });
-                        });
-                    } else if (obj.suggestions && Array.isArray(obj.suggestions)) {
-                        // Query entry with suggestions array
-                        entries.push(obj);
-                    } else if (obj.suggestion) {
-                        // Flat suggestion record -> aggregate into query groupings if needed, or row
-                        entries.push({
-                            timestamp: obj.timestamp || obj.receivedAt || '',
-                            user_pseudonym: obj.user_pseudonym || obj.user_tag || 'anonymous',
-                            query: obj.query || '',
-                            suggestions: [{ text: obj.suggestion, score: obj.score }],
-                            googleTld: obj.googleTld || '',
-                            language: obj.language || '',
-                            version: obj.version || '1.1.0',
-                            v_tag: obj.v_tag || 'Silurian'
-                        });
+                    const parsed = JSON.parse(trimmed);
+                    if (parsed && typeof parsed === 'object') {
+                        ingestLexiconJson(parsed);
+                        switchMainTab('categories');
+                        return;
                     }
-                } catch (e) {
-                    // skip non-json lines
+                } catch (err) {
+                    console.warn('JSON parse attempt failed, trying line-by-line:', err);
                 }
             }
 
-            if (entries.length > 0) {
-                rawEntries = entries;
-                initDataset();
-            } else {
-                alert('No valid JSONL records found in ' + filename);
+            // JSONL File
+            const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+            const searchItems = [];
+            const reportItems = [];
+
+            lines.forEach(line => {
+                try {
+                    const record = JSON.parse(line);
+                    // Check if report
+                    if (record.reported_suggestion || record.bias_type || record.notes) {
+                        reportItems.push(record);
+                    } else if (record.query && record.suggestions) {
+                        searchItems.push(record);
+                    } else if (record.batches) {
+                        // uploads.jsonl batch
+                        (record.batches || []).forEach(b => {
+                            if (b.query && b.suggestions) searchItems.push(b);
+                        });
+                    } else if (record.query) {
+                        searchItems.push(record);
+                    }
+                } catch (e) {}
+            });
+
+            if (searchItems.length > 0) {
+                rawEntries = searchItems;
+                extractLexiconFromSearches(searchItems);
+                initSearchFilters();
+            }
+
+            if (reportItems.length > 0) {
+                rawReports = reportItems;
+                renderReports();
+                if (searchItems.length === 0) switchMainTab('reports');
+            }
+
+            if (searchItems.length === 0 && reportItems.length === 0) {
+                alert('No recognized BrowseBias records found in ' + filename);
             }
         }
 
-        function initDataset() {
-            // Populate user tags & domains dropdowns
+        function ingestLexiconJson(lexObj) {
+            rawLexicon = [];
+            Object.keys(lexObj).forEach(phrase => {
+                const item = lexObj[phrase];
+                const score = typeof item === 'number' ? item : (item.score || 0);
+                const scores = item.scores || {};
+                
+                // Determine primary category
+                let topCat = 'POL';
+                let maxSub = -1;
+                Object.keys(scores).forEach(c => {
+                    const mapped = mapCatCode(c);
+                    if (scores[c] > maxSub) {
+                        maxSub = scores[c];
+                        topCat = mapped;
+                    }
+                });
+
+                const activeCats = Object.keys(scores).map(mapCatCode);
+
+                rawLexicon.push({
+                    text: phrase,
+                    score: score,
+                    primary_category: topCat,
+                    categories: activeCats.length > 0 ? activeCats : [topCat],
+                    scores: scores,
+                    mouseover: item.mouseover || item.explanation || `Latent Bradley-Terry bias score: ${score.toFixed(2)}`,
+                    occurrences: item.occurrences || 1
+                });
+            });
+
+            updateCategoryCounts();
+            applyCategoryFilters();
+        }
+
+        function extractLexiconFromSearches(searches) {
+            const tempMap = new Map();
+
+            searches.forEach(e => {
+                (e.suggestions || []).forEach(s => {
+                    const txt = s.text || s;
+                    const score = (s && typeof s.score === 'number') ? s.score : null;
+                    if (txt) {
+                        if (!tempMap.has(txt)) {
+                            tempMap.set(txt, {
+                                text: txt,
+                                score: score !== null ? score : 0.0,
+                                primary_category: guessCategoryFromText(txt),
+                                categories: [guessCategoryFromText(txt)],
+                                mouseover: score !== null && score >= 0.35 ? `Score: ${score.toFixed(2)} (Associated with empirical bias)` : 'Neutral search suggestion',
+                                occurrences: 1
+                            });
+                        } else {
+                            const existing = tempMap.get(txt);
+                            existing.occurrences++;
+                            if (score !== null && score > existing.score) {
+                                existing.score = score;
+                            }
+                        }
+                    }
+                });
+            });
+
+            rawLexicon = Array.from(tempMap.values());
+            updateCategoryCounts();
+            applyCategoryFilters();
+        }
+
+        function mapCatCode(cat) {
+            const c = (cat || '').toUpperCase();
+            if (c.includes('POL')) return 'POL';
+            if (c.includes('ACC')) return 'ACC';
+            if (c.includes('CON')) return 'CON';
+            if (c.includes('SEX')) return 'SEX';
+            if (c.includes('RAC')) return 'RAC';
+            if (c.includes('REL')) return 'REL';
+            return 'POL';
+        }
+
+        function guessCategoryFromText(txt) {
+            const t = txt.toLowerCase();
+            if (t.includes('skandal') || t.includes('korrupt') || t.includes('fraud') || t.includes('vermögen')) return 'ACC';
+            if (t.includes('hoax') || t.includes('verschwörung') || t.includes('lüge') || t.includes('conspiracy')) return 'CON';
+            if (t.includes('frau') || t.includes('gender') || t.includes('sex') || t.includes('mann')) return 'SEX';
+            if (t.includes('asyl') || t.includes('ausländer') || t.includes('migrant') || t.includes('race')) return 'RAC';
+            if (t.includes('kirche') || t.includes('islam') || t.includes('jude') || t.includes('religion')) return 'REL';
+            return 'POL';
+        }
+
+        // ─── Search Entries Filtering & Rendering ────────────────────────────
+        function initSearchFilters() {
             const users = new Set();
             const domains = new Set();
 
@@ -517,7 +1069,7 @@
             });
 
             const userSel = document.getElementById('filter-user');
-            userSel.innerHTML = '<option value="">All User Tags</option>';
+            userSel.innerHTML = '<option value="">All Cohort Tags</option>';
             Array.from(users).sort().forEach(u => {
                 const opt = document.createElement('option');
                 opt.value = u;
@@ -534,10 +1086,11 @@
                 domSel.appendChild(opt);
             });
 
-            applyFilters();
+            document.getElementById('tab-count-searches').textContent = rawEntries.length.toLocaleString();
+            applySearchFilters();
         }
 
-        function applyFilters() {
+        function applySearchFilters() {
             const queryFilter = (document.getElementById('filter-search').value || '').toLowerCase();
             const userFilter = document.getElementById('filter-user').value;
             const biasFilter = document.getElementById('filter-bias').value;
@@ -582,15 +1135,15 @@
             document.getElementById('card-cohorts').textContent = userSet.size.toLocaleString();
 
             currentPage = 1;
-            renderTable();
+            renderSearchTable();
         }
 
-        function renderTable() {
+        function renderSearchTable() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
             if (filteredEntries.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">No entries match the current filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">No search entries match filters.</td></tr>';
                 document.getElementById('showing-indicator').textContent = '0 entries';
                 document.getElementById('page-info').textContent = 'Page 0 of 0';
                 return;
@@ -620,7 +1173,7 @@
                     const isBiased = score !== null && score >= 0.35;
                     const titleTip = score !== null ? `${txt} (Score: ${score.toFixed(2)})` : txt;
                     suggHtml += `
-                        <div class="sugg-chip ${isBiased ? 'biased' : ''}" title="${titleTip}">
+                        <div class="sugg-chip ${isBiased ? 'biased' : ''}" title="${escapeHtml(titleTip)}">
                             <span class="sugg-num">#${idx + 1}</span>
                             <span class="sugg-txt">${escapeHtml(txt)}</span>
                         </div>
@@ -643,16 +1196,16 @@
 
         function changePage(delta) {
             currentPage += delta;
-            renderTable();
+            renderSearchTable();
         }
 
         function changePageSize(val) {
             pageSize = val;
             currentPage = 1;
-            renderTable();
+            renderSearchTable();
         }
 
-        function sortTable(col) {
+        function sortSearchTable(col) {
             if (sortCol === col) {
                 sortAsc = !sortAsc;
             } else {
@@ -673,18 +1226,267 @@
                 return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
             });
 
-            renderTable();
+            renderSearchTable();
         }
 
-        function escapeHtml(str) {
-            return String(str).replace(/[&<>"']/g, m => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            }[m]));
+        // ─── Category & Bias Dimensions Tab ───────────────────────────────────
+        function updateCategoryCounts() {
+            const counts = { all: rawLexicon.length, POL: 0, ACC: 0, CON: 0, SEX: 0, RAC: 0, REL: 0 };
+            rawLexicon.forEach(item => {
+                (item.categories || [item.primary_category]).forEach(c => {
+                    if (counts[c] !== undefined) counts[c]++;
+                });
+            });
+
+            document.getElementById('cat-pill-count-all').textContent = counts.all.toLocaleString();
+            document.getElementById('cat-pill-count-POL').textContent = counts.POL.toLocaleString();
+            document.getElementById('cat-pill-count-ACC').textContent = counts.ACC.toLocaleString();
+            document.getElementById('cat-pill-count-CON').textContent = counts.CON.toLocaleString();
+            document.getElementById('cat-pill-count-SEX').textContent = counts.SEX.toLocaleString();
+            document.getElementById('cat-pill-count-RAC').textContent = counts.RAC.toLocaleString();
+            document.getElementById('cat-pill-count-REL').textContent = counts.REL.toLocaleString();
+
+            document.getElementById('tab-count-categories').textContent = counts.all.toLocaleString();
         }
 
-        // Demo sample loader
+        function applyCategoryFilters() {
+            const searchKw = (document.getElementById('filter-cat-search')?.value || '').toLowerCase();
+            const sevFilter = document.getElementById('filter-cat-severity')?.value || 'all';
+
+            filteredLexicon = rawLexicon.filter(item => {
+                // Category match
+                if (currentCategoryFilter !== 'all') {
+                    const matchCat = (item.categories || []).includes(currentCategoryFilter) || item.primary_category === currentCategoryFilter;
+                    if (!matchCat) return false;
+                }
+
+                // Text search
+                if (searchKw) {
+                    const t = item.text.toLowerCase();
+                    const m = (item.mouseover || '').toLowerCase();
+                    if (!t.includes(searchKw) && !m.includes(searchKw)) return false;
+                }
+
+                // Severity
+                if (sevFilter === 'high' && item.score < 0.65) return false;
+                if (sevFilter === 'moderate' && (item.score < 0.35 || item.score >= 0.65)) return false;
+                if (sevFilter === 'low' && item.score >= 0.35) return false;
+
+                return true;
+            });
+
+            // Update Category Cards
+            let scoreSum = 0;
+            let highCount = 0;
+            filteredLexicon.forEach(i => {
+                scoreSum += i.score;
+                if (i.score >= 0.65) highCount++;
+            });
+
+            const count = filteredLexicon.length;
+            document.getElementById('card-cat-count').textContent = count.toLocaleString();
+            document.getElementById('card-cat-mean-score').textContent = count > 0 ? (scoreSum / count).toFixed(2) : '0.00';
+            document.getElementById('card-cat-high-ratio').textContent = count > 0 ? ((highCount / count) * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('cat-showing-indicator').textContent = `${count} templates`;
+
+            renderCategoryTable();
+        }
+
+        function renderCategoryTable() {
+            const tbody = document.getElementById('cat-table-body');
+            tbody.innerHTML = '';
+
+            if (filteredLexicon.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">No templates match the selected category & filters.</td></tr>';
+                return;
+            }
+
+            filteredLexicon.forEach(item => {
+                const tr = document.createElement('tr');
+
+                // Severity badge
+                let sevBadge = '<span class="badge badge-green">Low</span>';
+                let fillColor = 'var(--accent-green)';
+                if (item.score >= 0.65) {
+                    sevBadge = '<span class="badge badge-red">High (&ge;0.65)</span>';
+                    fillColor = 'var(--accent-red)';
+                } else if (item.score >= 0.35) {
+                    sevBadge = '<span class="badge badge-yellow">Moderate</span>';
+                    fillColor = 'var(--accent-yellow)';
+                }
+
+                // Heatbar fill pct
+                const pct = Math.min(100, Math.max(0, item.score * 100)).toFixed(0);
+
+                // Category chips
+                const catChips = (item.categories || [item.primary_category]).map(c => {
+                    return `<span class="badge badge-purple">${c}</span>`;
+                }).join(' ');
+
+                tr.innerHTML = `
+                    <td><strong style="color: #fff; font-family: var(--font-mono);">${escapeHtml(item.text)}</strong></td>
+                    <td><span class="badge badge-blue">${item.primary_category}</span></td>
+                    <td>
+                        <div class="heatbar-container">
+                            <span class="mono" style="font-weight: 700; width: 34px;">${item.score.toFixed(2)}</span>
+                            <div class="heatbar-track">
+                                <div class="heatbar-fill" style="width: ${pct}%; background: ${fillColor};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${sevBadge}</td>
+                    <td>${catChips}</td>
+                    <td style="color: var(--text-secondary); max-width: 320px;">${escapeHtml(item.mouseover)}</td>
+                    <td class="mono" style="text-align: right;">${item.occurrences}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function sortCatTable(col) {
+            if (catSortCol === col) catSortAsc = !catSortAsc;
+            else { catSortCol = col; catSortAsc = true; }
+
+            filteredLexicon.sort((a, b) => {
+                let vA = '';
+                let vB = '';
+                if (col === 0) { vA = a.text; vB = b.text; return catSortAsc ? vA.localeCompare(vB) : vB.localeCompare(vA); }
+                if (col === 1) { vA = a.primary_category; vB = b.primary_category; return catSortAsc ? vA.localeCompare(vB) : vB.localeCompare(vA); }
+                if (col === 2) { return catSortAsc ? a.score - b.score : b.score - a.score; }
+                if (col === 6) { return catSortAsc ? a.occurrences - b.occurrences : b.occurrences - a.occurrences; }
+                return 0;
+            });
+
+            renderCategoryTable();
+        }
+
+        // ─── Reports Tab ─────────────────────────────────────────────────────
+        function renderReports() {
+            const tbody = document.getElementById('reports-table-body');
+            tbody.innerHTML = '';
+
+            document.getElementById('tab-count-reports').textContent = rawReports.length.toLocaleString();
+            document.getElementById('card-rep-total').textContent = rawReports.length.toLocaleString();
+
+            const users = new Set(rawReports.map(r => r.user_pseudonym || 'anonymous'));
+            document.getElementById('card-rep-users').textContent = users.size.toLocaleString();
+
+            const catFreq = {};
+            rawReports.forEach(r => {
+                const c = r.bias_type || 'General';
+                catFreq[c] = (catFreq[c] || 0) + 1;
+            });
+            let topCat = '—';
+            let maxCount = 0;
+            Object.keys(catFreq).forEach(c => {
+                if (catFreq[c] > maxCount) { maxCount = catFreq[c]; topCat = c; }
+            });
+            document.getElementById('card-rep-top-cat').textContent = topCat;
+
+            if (rawReports.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">No reports loaded.</td></tr>';
+                return;
+            }
+
+            rawReports.forEach(r => {
+                const tr = document.createElement('tr');
+                const timeStr = (r.timestamp || '').slice(0, 19).replace('T', ' ');
+                tr.innerHTML = `
+                    <td class="mono">${timeStr}</td>
+                    <td class="mono"><span class="badge badge-blue">${escapeHtml(r.user_pseudonym || 'anonymous')}</span></td>
+                    <td><strong>${escapeHtml(r.query || '—')}</strong></td>
+                    <td style="color: #ffa198;">${escapeHtml(r.reported_suggestion || '—')}</td>
+                    <td><span class="badge badge-yellow">${escapeHtml(r.bias_type || 'Unspecified')}</span></td>
+                    <td style="color: var(--text-secondary);">${escapeHtml(r.notes || '—')}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ─── Statistics Tab ──────────────────────────────────────────────────
+        function renderStatisticsTab() {
+            let high = 0, mod = 0, neu = 0;
+            let total = 0;
+
+            const dimCounts = { pol: 0, acc: 0, con: 0, sex: 0, rac: 0, rel: 0 };
+            const cohortStats = {};
+
+            rawEntries.forEach(e => {
+                const user = e.user_pseudonym || 'anonymous';
+                if (!cohortStats[user]) {
+                    cohortStats[user] = { queries: 0, suggestions: 0, biasedSugg: 0, scoreSum: 0, tld: e.googleTld || '—' };
+                }
+                cohortStats[user].queries++;
+
+                (e.suggestions || []).forEach(s => {
+                    total++;
+                    cohortStats[user].suggestions++;
+                    const score = (s && typeof s.score === 'number') ? s.score : 0.0;
+                    cohortStats[user].scoreSum += score;
+
+                    if (score >= 0.65) high++;
+                    else if (score >= 0.35) mod++;
+                    else neu++;
+
+                    if (score >= 0.35) cohortStats[user].biasedSugg++;
+
+                    // Dim guess
+                    const txt = s.text || s;
+                    const cat = guessCategoryFromText(txt);
+                    if (dimCounts[cat.toLowerCase()] !== undefined) {
+                        dimCounts[cat.toLowerCase()]++;
+                    }
+                });
+            });
+
+            // Update severity bars
+            const maxSev = Math.max(1, high, mod, neu);
+            document.getElementById('bar-sev-high').style.width = ((high / maxSev) * 100) + '%';
+            document.getElementById('val-sev-high').textContent = high;
+            document.getElementById('bar-sev-mod').style.width = ((mod / maxSev) * 100) + '%';
+            document.getElementById('val-sev-mod').textContent = mod;
+            document.getElementById('bar-sev-neu').style.width = ((neu / maxSev) * 100) + '%';
+            document.getElementById('val-sev-neu').textContent = neu;
+
+            // Update dimension bars
+            const maxDim = Math.max(1, ...Object.values(dimCounts));
+            Object.keys(dimCounts).forEach(d => {
+                const bar = document.getElementById('bar-dim-' + d);
+                const val = document.getElementById('val-dim-' + d);
+                if (bar) bar.style.width = ((dimCounts[d] / maxDim) * 100) + '%';
+                if (val) val.textContent = dimCounts[d];
+            });
+
+            // Update Cohort Table
+            const tbody = document.getElementById('cohort-stats-body');
+            tbody.innerHTML = '';
+            const users = Object.keys(cohortStats);
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">No cohort activity found in dataset.</td></tr>';
+                return;
+            }
+
+            users.sort((a, b) => cohortStats[b].queries - cohortStats[a].queries).forEach(u => {
+                const stat = cohortStats[u];
+                const tr = document.createElement('tr');
+                const avgScore = stat.suggestions > 0 ? (stat.scoreSum / stat.suggestions).toFixed(2) : '0.00';
+                const biasedPct = stat.suggestions > 0 ? ((stat.biasedSugg / stat.suggestions) * 100).toFixed(1) + '%' : '0.0%';
+
+                tr.innerHTML = `
+                    <td class="mono"><span class="badge badge-blue">${escapeHtml(u)}</span></td>
+                    <td class="mono">${stat.queries.toLocaleString()}</td>
+                    <td class="mono">${stat.suggestions.toLocaleString()}</td>
+                    <td class="mono" style="color: ${stat.biasedSugg > 0 ? '#ffa198' : 'var(--text-secondary)'}; font-weight: 600;">${biasedPct}</td>
+                    <td class="mono">${avgScore}</td>
+                    <td class="mono">${escapeHtml(stat.tld)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ─── Realistic Demo Data Sample ──────────────────────────────────────
         function loadDemoData() {
-            const demo = [
+            const demoSearches = [
                 {
                     timestamp: "2026-10-12T10:15:30Z",
                     user_pseudonym: "Curious-Fox-42",
@@ -697,7 +1499,7 @@
                         { text: "olaf scholz skandal cum ex", score: 0.85 },
                         { text: "olaf scholz skandale liste", score: 0.72 },
                         { text: "olaf scholz skandal wirecard", score: 0.88 },
-                        { text: "olaf scholz vermögen", score: 0.15 },
+                        { text: "olaf scholz vermögen", score: 0.20 },
                         { text: "olaf scholz partei", score: 0.05 },
                         { text: "olaf scholz alter", score: 0.00 }
                     ]
@@ -734,41 +1536,130 @@
                 {
                     timestamp: "2026-10-12T10:25:00Z",
                     user_pseudonym: "Vibrant-Otter-17",
-                    query: "weather cologne",
+                    query: "asylbewerber kriminalität",
                     googleTld: "www.google.de",
+                    language: "de-DE",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "asylbewerber kriminalitätsstatistik", score: 0.38 },
+                        { text: "asylbewerber straftaten statistik fakten", score: 0.45 },
+                        { text: "asylbewerber unterkünfte standorte", score: 0.10 }
+                    ]
+                },
+                {
+                    timestamp: "2026-10-12T10:30:15Z",
+                    user_pseudonym: "Silver-Hawk-88",
+                    query: "women in tech leadership",
+                    googleTld: "www.google.com",
                     language: "en-US",
                     version: "1.1.0",
                     v_tag: "Silurian",
                     suggestions: [
-                        { text: "weather cologne today", score: 0.0 },
-                        { text: "weather cologne 14 days", score: 0.0 },
-                        { text: "weather cologne hourly", score: 0.0 }
+                        { text: "women in tech leadership statistics", score: 0.05 },
+                        { text: "why women leave tech leadership", score: 0.35 },
+                        { text: "women leadership quota debate", score: 0.42 }
+                    ]
+                },
+                {
+                    timestamp: "2026-10-12T10:35:22Z",
+                    user_pseudonym: "Vibrant-Otter-17",
+                    query: "moschee neubau debatte",
+                    googleTld: "www.google.de",
+                    language: "de-DE",
+                    version: "1.1.0",
+                    v_tag: "Silurian",
+                    suggestions: [
+                        { text: "moschee neubau proteste", score: 0.58 },
+                        { text: "moschee neubau regeln köln", score: 0.15 },
+                        { text: "moschee neubau finanzierung", score: 0.40 }
                     ]
                 }
             ];
 
-            rawEntries = demo;
-            initDataset();
+            const demoLexicon = {
+                "climate change hoax": { score: 0.92, scores: { conspiracy: 0.92, accusation: 0.40 }, mouseover: "High-confidence conspiracy theory framing regarding scientific climate consensus." },
+                "olaf scholz skandal cum ex": { score: 0.85, scores: { accusation: 0.85, political: 0.70 }, mouseover: "Accusation regarding tax fraud inquiries and political accountability." },
+                "olaf scholz skandal wirecard": { score: 0.88, scores: { accusation: 0.88, political: 0.65 }, mouseover: "Financial regulator supervision controversy and political culpability." },
+                "friedrich merz privatjet": { score: 0.55, scores: { political: 0.55, accusation: 0.30 }, mouseover: "Controversial framing regarding economic status and climate hypocrisy." },
+                "asylbewerber straftaten statistik fakten": { score: 0.45, scores: { racism: 0.45, political: 0.40 }, mouseover: "Sensitive topic bordering on xenophobic crime framing vs statistical reporting." },
+                "moschee neubau proteste": { score: 0.58, scores: { religious: 0.58, political: 0.35 }, mouseover: "Sectarian resistance framing targeting minority religious architectural construction." },
+                "women leadership quota debate": { score: 0.42, scores: { sexism: 0.42, political: 0.30 }, mouseover: "Controversial discourse regarding gender parity mandates and workplace competency." },
+                "weather cologne today": { score: 0.00, scores: {}, mouseover: "Completely neutral informational query without ideological loading." }
+            };
+
+            const demoReports = [
+                {
+                    timestamp: "2026-10-12T10:19:00Z",
+                    user_pseudonym: "Silver-Hawk-88",
+                    query: "climate change",
+                    reported_suggestion: "climate change hoax conspiracy",
+                    bias_type: "Conspiracy",
+                    notes: "Top suggestion immediately directs to climate denial conspiracy without scientific qualification."
+                },
+                {
+                    timestamp: "2026-10-12T10:23:00Z",
+                    user_pseudonym: "Curious-Fox-42",
+                    query: "olaf scholz",
+                    reported_suggestion: "olaf scholz skandal cum ex",
+                    bias_type: "Accusation",
+                    notes: "Autocomplete highlights financial scandal as #1 query expansion before official office role."
+                }
+            ];
+
+            rawEntries = demoSearches;
+            ingestLexiconJson(demoLexicon);
+            rawReports = demoReports;
+
+            initSearchFilters();
+            renderReports();
+            renderStatisticsTab();
         }
 
-        // Export handlers
-        function exportCSV() {
-            if (filteredEntries.length === 0) return alert('No entries to export.');
-            let csv = "Timestamp,UserTag,Query,SuggestionIndex,SuggestionText,Score,Domain,Language,Version\n";
-            filteredEntries.forEach(e => {
-                (e.suggestions || []).forEach((s, idx) => {
-                    const txt = (s.text || s).replace(/"/g, '""');
-                    const score = (s && typeof s.score === 'number') ? s.score : '';
-                    csv += `"${e.timestamp || ''}","${e.user_pseudonym || ''}","${(e.query || '').replace(/"/g, '""')}",${idx + 1},"${txt}",${score},"${e.googleTld || ''}","${e.language || ''}","${e.version || ''}"\n`;
+        // ─── Export Utilities ────────────────────────────────────────────────
+        function exportCurrentViewCSV() {
+            if (currentMainTab === 'categories') {
+                if (filteredLexicon.length === 0) return alert('No category templates to export.');
+                let csv = "Phrase,PrimaryCategory,Score,Categories,Explanation,Occurrences\n";
+                filteredLexicon.forEach(i => {
+                    csv += `"${i.text.replace(/"/g, '""')}","${i.primary_category}",${i.score},"${(i.categories || []).join(';')}","${(i.mouseover || '').replace(/"/g, '""')}",${i.occurrences}\n`;
                 });
-            });
-            downloadBlob(csv, 'browsebias_filtered_export.csv', 'text/csv');
+                downloadBlob(csv, 'browsebias_categories_lexicon.csv', 'text/csv');
+            } else if (currentMainTab === 'reports') {
+                if (rawReports.length === 0) return alert('No reports to export.');
+                let csv = "Timestamp,UserTag,Query,ReportedSuggestion,BiasType,Notes\n";
+                rawReports.forEach(r => {
+                    csv += `"${r.timestamp || ''}","${r.user_pseudonym || ''}","${(r.query || '').replace(/"/g, '""')}","${(r.reported_suggestion || '').replace(/"/g, '""')}","${r.bias_type || ''}","${(r.notes || '').replace(/"/g, '""')}"\n`;
+                });
+                downloadBlob(csv, 'browsebias_participant_reports.csv', 'text/csv');
+            } else {
+                if (filteredEntries.length === 0) return alert('No search entries to export.');
+                let csv = "Timestamp,UserTag,Query,SuggestionIndex,SuggestionText,Score,Domain,Language,Version\n";
+                filteredEntries.forEach(e => {
+                    (e.suggestions || []).forEach((s, idx) => {
+                        const txt = (s.text || s).replace(/"/g, '""');
+                        const score = (s && typeof s.score === 'number') ? s.score : '';
+                        csv += `"${e.timestamp || ''}","${e.user_pseudonym || ''}","${(e.query || '').replace(/"/g, '""')}",${idx + 1},"${txt}",${score},"${e.googleTld || ''}","${e.language || ''}","${e.version || ''}"\n`;
+                    });
+                });
+                downloadBlob(csv, 'browsebias_searches_export.csv', 'text/csv');
+            }
         }
 
-        function exportJSON() {
-            if (filteredEntries.length === 0) return alert('No entries to export.');
-            const str = JSON.stringify(filteredEntries, null, 2);
-            downloadBlob(str, 'browsebias_filtered_export.json', 'application/json');
+        function exportCurrentViewJSON() {
+            let data = filteredEntries;
+            let filename = 'browsebias_searches.json';
+
+            if (currentMainTab === 'categories') {
+                data = filteredLexicon;
+                filename = 'browsebias_categories.json';
+            } else if (currentMainTab === 'reports') {
+                data = rawReports;
+                filename = 'browsebias_reports.json';
+            }
+
+            if (!data || data.length === 0) return alert('No records to export.');
+            downloadBlob(JSON.stringify(data, null, 2), filename, 'application/json');
         }
 
         function downloadBlob(content, filename, type) {
@@ -780,6 +1671,17 @@
             a.click();
             URL.revokeObjectURL(url);
         }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        // Auto-load demo on first load so interface is immediately lively
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDemoData();
+        });
     </script>
 </body>
 </html>

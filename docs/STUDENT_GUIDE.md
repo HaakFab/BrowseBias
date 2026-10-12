@@ -1,6 +1,6 @@
-# BrowseBias — Student & Course Participant Guide
+# BrowseBias — Auditor & Study Participant Guide
 
-Welcome to the **BrowseBias** course toolkit! This guide walks you through installing the browser extension, auditing Google autocomplete suggestions, using your pseudonymized cohort tag, running the automated collector, and viewing collected datasets.
+Welcome to the **BrowseBias** empirical audit toolkit. This guide walks you through installing the browser extension, auditing Google autocomplete suggestions, setting your privacy-preserving cohort tag, running the automated collector simulator, and exploring datasets with the offline multi-tab viewer.
 
 ---
 
@@ -37,7 +37,7 @@ The extension runs in **Google Chrome**, **Brave**, **Microsoft Edge**, or any C
 
 ## 2. Setting Your Pseudonym / Cohort Tag
 
-To preserve privacy while allowing us to compare how Google autocomplete behaves across different student cohorts, the extension automatically assigns you a unique pseudonym (e.g. `Curious-Fox-42`).
+To preserve privacy while allowing researchers to compare how Google autocomplete behaves across different participant cohorts and geographic environments, the extension automatically assigns you an anonymous pseudonym (e.g. `Curious-Fox-42`).
 
 ```
 +-------------------------------------------------------+
@@ -49,7 +49,7 @@ To preserve privacy while allowing us to compare how Google autocomplete behaves
 |  Auto-Upload Sync              [ Every 1 hour ▼ ]     |
 |                                                       |
 |  User Tag / Pseudonym                                 |
-|  Audit tag for student cohort                         |
+|  Auditor cohort or participant tag                    |
 |  [ Curious-Fox-42       ]  [Save]  [🎲]               |
 +-------------------------------------------------------+
 ```
@@ -58,20 +58,20 @@ To preserve privacy while allowing us to compare how Google autocomplete behaves
 2. In the **Settings** section, locate **User Tag / Pseudonym**.
 3. You can:
    - Keep your auto-assigned pseudonym.
-   - Click the **🎲 Randomize** button to generate a new animal tag.
-   - Enter your assigned cohort code (e.g. `CohortA-Group2`) and click **Save**.
-4. All subsequent search recordings and feedback reports will be tagged with this pseudonym.
+   - Click the **🎲 Randomize** button to generate a new anonymous animal tag.
+   - Enter your assigned research group tag (e.g. `CohortA-Group2`, `Audit-DE-01`) and click **Save**.
+4. All subsequent search recordings and feedback reports will be attributed cleanly to this cohort pseudonym.
 
 ---
 
 ## 3. Auditing Google Search Autocomplete
 
 1. Navigate to [Google Search](https://www.google.de) or [Google.com](https://www.google.com).
-2. Start typing a query (e.g. `"olaf scholz skandal"` or `"klimawandel"`).
-3. Look at the dropdown autocomplete suggestions:
+2. Start typing a query (e.g. `"olaf scholz skandal"`, `"climate change"`, or `"asylbewerber"`).
+3. Observe the dropdown autocomplete suggestions:
    - Neutral suggestions appear standard.
-   - Suggestions with potential opinion, controversy, defamation, or political bias display an inline color pill.
-   - **Hover your mouse** over any pill to read an explanatory tooltip and the confidence score.
+   - Suggestions with potential controversy, defamation, or political bias display an inline color pill.
+   - **Hover your mouse** over any pill to view an explanatory tooltip and the confidence score.
 
 ```
 Google Search Box: [ olaf scholz skandal                 ]
@@ -86,12 +86,12 @@ Google Search Box: [ olaf scholz skandal                 ]
 
 ## 4. Reporting Problematic Suggestions
 
-If you encounter an autocomplete suggestion that you believe is harmful, defamatory, or incorrectly labeled:
+If you encounter an autocomplete suggestion that you observe is harmful, defamatory, or incorrectly labeled:
 
 1. Click the **Autocomplete Bias** icon in your toolbar.
 2. The popup detects your active Google search query.
 3. Click either:
-   - `🚨 Problematic Suggestions` (for hate speech, defamation, conspiracy theories)
+   - `🚨 Problematic Suggestions` (for defamation, conspiracy theories, extremist tropes)
    - `🏷️ Wrong Bias Labels` (if a label was assigned inaccurately)
 4. Add an optional comment explaining why you flagged it.
 5. Click **🚀 Submit Report**. Your feedback is transmitted securely to the research server.
@@ -100,7 +100,7 @@ If you encounter an autocomplete suggestion that you believe is harmful, defamat
 
 ## 5. Running the Automated Collector (Easy GUI)
 
-Rather than typing hundreds of terms manually, you can use the **Collector Simulator** with our intuitive web GUI.
+To systematically collect autocomplete suggestions across extensive keyword datasets without manual typing, use the cross-platform **Collector Simulator** with its local web GUI.
 
 ### Launching the GUI:
 - **macOS:** Double-click `collector/run_collector_gui.command` (or run `python start_collector.py`)
@@ -132,23 +132,23 @@ A browser window will open automatically at `http://localhost:8766`:
 
 1. Select a keyword preset or paste your own custom keywords.
 2. Click **▶ Start Collection**.
-3. A Playwright browser window will open and simulate natural human typing speed, triggering Google autocomplete while the extension captures and scores the suggestions.
+3. A Playwright browser window will launch and simulate natural human typing speeds, triggering Google autocomplete while the extension captures and scores the suggestions.
 4. Click **⏹ Stop Collection** anytime to pause or stop.
 
 ---
 
 ## 6. Offline Dataset Inspection with the Standalone Viewer
 
-Want to inspect your collected dataset without having to start a Python server?
+To inspect and explore your collected research datasets without needing to run a server:
 
 1. Locate the file `viewer/dataset_viewer.html` in the repository.
 2. **Double-click it** to open it in any web browser (`file:///...`).
-3. Drag & drop your downloaded `suggestions.jsonl` or `uploads.jsonl` file into the dashed box.
-4. Or click **✨ Load Demo Sample** to explore the viewer immediately!
+3. Drag & drop your downloaded `suggestions.jsonl`, `uploads.jsonl`, `reports.jsonl`, or `lexicon.json` file into the dashed box.
+4. Or click **⚡ Load Realistic Audit Sample** to explore the multi-tab interface immediately!
 
 ### Viewer Features:
-- **Search bar:** Filter queries, suggestions, and user tags in real time.
-- **Cohort Filter:** Isolate results submitted by your specific pseudonym tag.
-- **Pill Tooltips:** View all 10 autocomplete suggestions per query, complete with bias pills.
-- **Column Sorting:** Click any column header to sort ascending or descending.
-- **Exporting:** Click **📤 Export CSV** or **📤 Export JSON** to export your filtered slice for homework or data analysis.
+- **🔍 Autocomplete Searches Tab:** Filter by query, cohort tag, domain, or bias level; view all 10 suggestions per row.
+- **⚖️ Bias Dimensions Tab:** Explore continuous Bradley-Terry scores across all 6 core dimensions (`POL`, `ACC`, `CON`, `SEX`, `RAC`, `REL`) with gradient heatbars and explanatory notes.
+- **📋 Participant Reports Tab:** Inspect flagged suggestions, bias types, and participant qualitative feedback.
+- **📊 Numbers & Cohort Statistics Tab:** Distribution bar charts, dimension frequency breakdowns, and auditor cohort comparison tables.
+- **Exporting:** Click **📥 Export CSV** or **📥 Export JSON** on any active tab for downstream data analysis in Python, R, or spreadsheet software.

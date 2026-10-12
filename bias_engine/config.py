@@ -53,18 +53,11 @@ _load_env_file()
 
 def _default_providers() -> Dict[str, LLMProviderConfig]:
     return {
-        "gemini-3.1-flash-lite": LLMProviderConfig(
-            name="gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite": LLMProviderConfig(
+            name="gemini-3.5-flash-lite",
             provider_type="gemini",
-            model="gemini-3.1-flash-lite",
+            model="gemini-3.5-flash-lite",
             api_key_env="GOOGLE_API_KEY",
-        ),
-        "thki-cascade": LLMProviderConfig(
-            name="thki-cascade",
-            provider_type="thki_cascade",
-            model="openai-gpt5.4-mini",
-            api_key_env="THKI_KEY",
-            base_url="https://chat.kiconnect.nrw/api/v1",
         ),
         "thki-gpt5.4-mini": LLMProviderConfig(
             name="thki-gpt5.4-mini",
@@ -99,10 +92,10 @@ def _default_providers() -> Dict[str, LLMProviderConfig]:
 
 def _default_primary_provider() -> str:
     if os.environ.get("THKI_KEY"):
-        return "thki-cascade"
+        return "thki-gpt5.4-mini"
     if os.environ.get("GOOGLE_API_KEY"):
-        return "gemini-3.1-flash-lite"
-    return "thki-cascade"
+        return "gemini-3.5-flash-lite"
+    return "thki-gpt5.4-mini"
 
 
 @dataclass

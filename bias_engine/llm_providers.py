@@ -471,3 +471,49 @@ class LLMRegistry:
     @property
     def providers(self) -> Dict[str, LLMProvider]:
         return dict(self._providers)
+
+
+def create_provider_for_model(provider_type: str, model: str) -> LLMProvider:
+    """
+    Create a concrete, scientific LLMProvider instance for a specific provider family and model.
+    Guarantees strict model provenance without dynamic mid-run swapping.
+    """
+    p_type = provider_type.lower().strip()
+    m_name = model.strip()
+
+    if p_type in ["thki", "th_koeln"]:
+        cfg = LLMProviderConfig(
+            name=f"thki:{m_name}",
+            provider_type="thki",
+            model=m_name,
+            api_key_env="THKI_KEY",
+            base_url=os.environ.get("THKI_BASE_URL", THKIProvider.DEFAULT_BASE_URL),
+        )
+        return THKIProvider(cfg)
+    elif p_type in ["gemini", "open", "google"]:
+        cfg = LLMProviderConfig(
+            name=f"gemini:{m_name}",
+            provider_type="gemini",
+            model=m_name,
+            api_key_env="GOOGLE_API_KEY",
+        )
+        return GeminiProvider(cfg)
+    elif p_type in ["openai"]:
+        cfg = LLMProviderConfig(
+            name=f"openai:{m_name}",
+            provider_type="openai",
+            model=m_name,
+            api_key_env="OPENAI_API_KEY",
+        )
+        return OpenAIProvider(cfg)
+    elif p_type in ["local", "ollama", "openai_compatible"]:
+        cfg = LLMProviderConfig(
+            name=f"local:{m_name}",
+            provider_type="openai_compatible",
+            model=m_name,
+            api_key_env="LOCAL_LLM_API_KEY",
+            base_url=os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1"),
+        )
+        return OpenAICompatibleProvider(cfg)
+    else:
+        raise ValueError(f"Unsupported provider family '{provider_type}'. Supported: thki, gemini, openai, local")

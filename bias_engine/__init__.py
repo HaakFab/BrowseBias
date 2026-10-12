@@ -39,7 +39,12 @@ class BiasEngine:
     and background scheduling.
     """
 
-    def __init__(self, config: Optional[EngineConfig] = None):
+    def __init__(
+        self,
+        config: Optional[EngineConfig] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
         self.config = config or EngineConfig()
         self.config.ensure_dirs()
 
@@ -51,7 +56,11 @@ class BiasEngine:
 
         # 2. Initialize LLM Registry & Providers
         self.llm_registry = LLMRegistry.from_configs(self.config.providers)
-        self.primary_llm = self.llm_registry.get(self.config.primary_provider)
+        if provider and model:
+            from .llm_providers import create_provider_for_model
+            self.primary_llm = create_provider_for_model(provider, model)
+        else:
+            self.primary_llm = self.llm_registry.get(self.config.primary_provider)
 
         self.secondary_llm: Optional[LLMProvider] = None
         if self.config.cross_model_provider and self.config.cross_model_provider in self.llm_registry.providers:
