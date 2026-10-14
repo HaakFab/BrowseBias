@@ -18,14 +18,13 @@ try:
     import spaces
     HAS_SPACES_GPU = True
 except ImportError:
-    spaces = None
+    class spaces:
+        @staticmethod
+        def GPU(func=None, *args, **kwargs):
+            if func is not None:
+                return func
+            return lambda f: f
     HAS_SPACES_GPU = False
-
-def gpu_fn(func):
-    """Decorator applying @spaces.GPU when running on Hugging Face ZeroGPU."""
-    if spaces is not None and hasattr(spaces, "GPU"):
-        return spaces.GPU(func)
-    return func
 
 # Import the core Flask application
 from server.app import (
@@ -94,7 +93,7 @@ if HAS_GRADIO:
     app.mount("/legal", WSGIMiddleware(flask_app))
 
     # ─── Gradio Web Interface (Served at root for web visitors) ─────
-    @gpu_fn
+    @spaces.GPU
     def refresh_dashboard():
         suggs, uploads, reports, lex_size = get_server_stats()
         return (
@@ -115,15 +114,15 @@ if HAS_GRADIO:
         thread.start()
         return f"🚀 Successfully started {mode} rating job in background!"
 
-    @gpu_fn
+    @spaces.GPU
     def trigger_rating_incremental(password):
         return trigger_rating_job(password, "incremental")
 
-    @gpu_fn
+    @spaces.GPU
     def trigger_rating_initial(password):
         return trigger_rating_job(password, "initial")
 
-    @gpu_fn
+    @spaces.GPU
     def get_rating_logs(password):
         if ADMIN_PASSWORD and password != ADMIN_PASSWORD:
             return "Enter valid Admin Password to view real-time pipeline execution logs."
