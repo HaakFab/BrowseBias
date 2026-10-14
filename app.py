@@ -16,13 +16,16 @@ if str(PROJECT_ROOT) not in sys.path:
 # ─── Hugging Face ZeroGPU Compatibility ───────────────────────────────
 try:
     import spaces
-    @spaces.GPU
-    def zero_gpu_anchor():
-        """Satisfies Hugging Face ZeroGPU startup scanner."""
-        return True
     HAS_SPACES_GPU = True
 except ImportError:
+    spaces = None
     HAS_SPACES_GPU = False
+
+def gpu_fn(func):
+    """Decorator applying @spaces.GPU when running on Hugging Face ZeroGPU."""
+    if spaces is not None and hasattr(spaces, "GPU"):
+        return spaces.GPU(func)
+    return func
 
 # Import the core Flask application
 from server.app import (
@@ -91,6 +94,7 @@ if HAS_GRADIO:
     app.mount("/legal", WSGIMiddleware(flask_app))
 
     # ─── Gradio Web Interface (Served at root for web visitors) ─────
+    @gpu_fn
     def refresh_dashboard():
         suggs, uploads, reports, lex_size = get_server_stats()
         return (
@@ -111,6 +115,15 @@ if HAS_GRADIO:
         thread.start()
         return f"🚀 Successfully started {mode} rating job in background!"
 
+    @gpu_fn
+    def trigger_rating_incremental(password):
+        return trigger_rating_job(password, "incremental")
+
+    @gpu_fn
+    def trigger_rating_initial(password):
+        return trigger_rating_job(password, "initial")
+
+    @gpu_fn
     def get_rating_logs(password):
         if ADMIN_PASSWORD and password != ADMIN_PASSWORD:
             return "Enter valid Admin Password to view real-time pipeline execution logs."
@@ -142,7 +155,7 @@ if HAS_GRADIO:
 
                 btn_refresh = gr.Button("🔄 Refresh Metrics", variant="secondary")
                 btn_refresh.click(
-                    refresh_dashboard,
+                    fn=refresh_dashboard,
                     inputs=[],
                     outputs=[metric_suggs, metric_batches, metric_reports, metric_lex]
                 )
@@ -174,12 +187,12 @@ if HAS_GRADIO:
 
                 action_output = gr.Textbox(label="Action Result", interactive=False)
                 btn_incremental.click(
-                    lambda pw: trigger_rating_job(pw, "incremental"),
+                    fn=trigger_rating_incremental,
                     inputs=[admin_pw],
                     outputs=[action_output]
                 )
                 btn_initial.click(
-                    lambda pw: trigger_rating_job(pw, "initial"),
+                    fn=trigger_rating_initial,
                     inputs=[admin_pw],
                     outputs=[action_output]
                 )
@@ -187,13 +200,13 @@ if HAS_GRADIO:
                 btn_logs = gr.Button("📋 Check Pipeline Progress & Logs")
                 logs_display = gr.Textbox(label="Rating Engine Logs", lines=10, interactive=False)
                 btn_logs.click(
-                    get_rating_logs,
+                    fn=get_rating_logs,
                     inputs=[admin_pw],
                     outputs=[logs_display]
                 )
 
         # Initialize metrics on load
-        demo.load(refresh_dashboard, inputs=[], outputs=[metric_suggs, metric_batches, metric_reports, metric_lex])
+        demo.load(fn=refresh_dashboard, inputs=[], outputs=[metric_suggs, metric_batches, metric_reports, metric_lex])
 
     # Mount Gradio app at the root of FastAPI
     app = gr.mount_gradio_app(app, demo, path="/")
