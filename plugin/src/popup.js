@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleHighlighting = document.getElementById('toggle-highlighting');
   const toggleScraping = document.getElementById('toggle-scraping');
   const selectSyncInterval = document.getElementById('select-sync-interval');
+  const selectServerMode = document.getElementById('select-server-mode');
+  const customServerRow = document.getElementById('custom-server-row');
+  const inputCustomServer = document.getElementById('input-custom-server');
+  const btnSaveCustomServer = document.getElementById('btn-save-custom-server');
+  const statusServerMode = document.getElementById('status-server-mode');
   const inputPseudonym = document.getElementById('input-pseudonym');
   const btnSavePseudonym = document.getElementById('btn-save-pseudonym');
   const btnRandomPseudonym = document.getElementById('btn-random-pseudonym');
@@ -34,6 +39,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const reportCommentEl = document.getElementById('report-comment');
   const btnSubmitReport = document.getElementById('btn-submit-report');
   const btnCancelReport = document.getElementById('btn-cancel-report');
+
+  // Debug Inspector elements
+  const btnToggleDebug = document.getElementById('btn-toggle-debug');
+  const debugBadgeCount = document.getElementById('debug-badge-count');
+  const debugPanel = document.getElementById('debug-panel');
+  const btnDebugPrev = document.getElementById('btn-debug-prev');
+  const btnDebugNext = document.getElementById('btn-debug-next');
+  const btnDebugRefresh = document.getElementById('btn-debug-refresh');
+  const debugNavCounter = document.getElementById('debug-nav-counter');
+  const debugQueryVal = document.getElementById('debug-query-val');
+  const debugMetaTime = document.getElementById('debug-meta-time');
+  const debugMetaDomain = document.getElementById('debug-meta-domain');
+  const debugMetaCount = document.getElementById('debug-meta-count');
+  const debugEmptyState = document.getElementById('debug-empty-state');
+  const debugList = document.getElementById('debug-list');
+  const btnDebugCopy = document.getElementById('btn-debug-copy');
+  const btnDebugRawToggle = document.getElementById('btn-debug-raw-toggle');
+  const btnDebugClose = document.getElementById('btn-debug-close');
+  const debugRawView = document.getElementById('debug-raw-view');
+
+  let debugEntries = [];
+  let currentDebugIndex = 0;
 
   let activeReportType = null;
   let activeTabContext = {
@@ -63,6 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
       'autoSyncEnabled',
       'uploadIntervalMinutes',
       'user_pseudonym',
+      'serverMode',
+      'customServerUrl',
+      'serverBaseUrl',
       'versionTag'
     ],
     (settings) => {
@@ -81,9 +111,59 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // Initialize Server Mode selector
+      const mode = settings.serverMode || 'online';
+      if (selectServerMode) {
+        selectServerMode.value = mode;
+      }
+      if (customServerRow) {
+        customServerRow.style.display = (mode === 'custom') ? 'block' : 'none';
+      }
+      if (inputCustomServer && settings.customServerUrl) {
+        inputCustomServer.value = settings.customServerUrl;
+      }
+
       updateStatus(settings);
     }
   );
+
+  // ─── Server Mode Handlers ───────────────────────────────────────
+  if (selectServerMode) {
+    selectServerMode.addEventListener('change', () => {
+      const mode = selectServerMode.value;
+      if (mode === 'custom') {
+        if (customServerRow) customServerRow.style.display = 'block';
+        if (inputCustomServer) inputCustomServer.focus();
+      } else {
+        if (customServerRow) customServerRow.style.display = 'none';
+        chrome.runtime.sendMessage({ type: 'setServerMode', serverMode: mode }, (res) => {
+          const label = mode === 'local' ? 'Local Server (localhost:8765)' : 'Online Server (Hugging Face)';
+          showToast(`🌐 Target server: ${label}`);
+          chrome.storage.local.get(
+            ['serverMode', 'serverBaseUrl', 'pendingData', 'biasLexicon', 'lastUploadTime', 'autoSyncEnabled', 'uploadIntervalMinutes', 'versionTag'],
+            updateStatus
+          );
+        });
+      }
+    });
+  }
+
+  if (btnSaveCustomServer && inputCustomServer) {
+    btnSaveCustomServer.addEventListener('click', () => {
+      const url = inputCustomServer.value.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        showToast('⚠️ URL must start with http:// or https://');
+        return;
+      }
+      chrome.runtime.sendMessage({ type: 'setServerMode', serverMode: 'custom', customServerUrl: url }, (res) => {
+        showToast(`✅ Saved custom server: ${url}`);
+        chrome.storage.local.get(
+          ['serverMode', 'serverBaseUrl', 'pendingData', 'biasLexicon', 'lastUploadTime', 'autoSyncEnabled', 'uploadIntervalMinutes', 'versionTag'],
+          updateStatus
+        );
+      });
+    });
+  }
 
   // ─── Pseudonym Handlers ─────────────────────────────────────────
   if (btnSavePseudonym && inputPseudonym) {
@@ -116,14 +196,333 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ─── Download Dataset Button ────────────────────────────────────
+  // ─── Debug Captured Suggestions Inspector ──────────────────────
+  function updateDebugBadgeCount() {
+    chrome.storage.local.get(['recentCaptures', 'pendingData'], (res) => {
+      const merged = mergeAndDeduplicateCaptures(res.recentCaptures || [], res.pendingData || []);
+      if (debugBadgeCount) {
+        debugBadgeCount.textContent = String(merged.length);
+      }
+    });
+  }
+
+  function mergeAndDeduplicateCaptures(recent, pending) {
+    const combined = [...recent, ...pending];
+    const seen = new Set();
+    const unique = [];
+
+    // Reverse to process newest first
+    for (let i = combined.length - 1; i >= 0; i--) {
+      const entry = combined[i];
+      if (!entry || !entry.query) continue;
+      const suggKey = (entry.suggestions || []).map(s => (typeof s === 'string' ? s : s.text || '')).join('|');
+      const key = `${entry.query}::${suggKey}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(entry);
+      }
+    }
+    return unique;
+  }
+
+  function loadCapturedSuggestions(toastOnRefresh = false) {
+    chrome.storage.local.get(['recentCaptures', 'pendingData'], (res) => {
+      let merged = mergeAndDeduplicateCaptures(res.recentCaptures || [], res.pendingData || []);
+
+      // If active Google tab currently has suggestions, offer as live option
+      if (activeTabContext && activeTabContext.query && activeTabContext.suggestions?.length > 0) {
+        const liveEntry = {
+          timestamp: new Date().toISOString(),
+          query: activeTabContext.query,
+          suggestions: activeTabContext.suggestions,
+          googleTld: activeTabContext.googleTld || 'google.de (Live)',
+          language: activeTabContext.language || 'unknown',
+          isLive: true
+        };
+        const first = merged[0];
+        if (!first || first.query !== liveEntry.query) {
+          merged.unshift(liveEntry);
+        }
+      }
+
+      debugEntries = merged;
+      if (debugBadgeCount) {
+        debugBadgeCount.textContent = String(debugEntries.length);
+      }
+
+      currentDebugIndex = 0;
+      renderCurrentDebugEntry();
+
+      if (toastOnRefresh) {
+        showToast(`🔄 Refreshed: ${debugEntries.length} captured entries`);
+      }
+    });
+  }
+
+  function renderCurrentDebugEntry() {
+    if (!debugPanel) return;
+
+    if (!debugEntries || debugEntries.length === 0) {
+      if (debugEmptyState) debugEmptyState.style.display = 'block';
+      if (debugList) {
+        debugList.style.display = 'none';
+        debugList.innerHTML = '';
+      }
+      if (debugNavCounter) debugNavCounter.textContent = '0 / 0';
+      if (btnDebugPrev) btnDebugPrev.disabled = true;
+      if (btnDebugNext) btnDebugNext.disabled = true;
+      if (debugQueryVal) debugQueryVal.textContent = '—';
+      if (debugMetaTime) debugMetaTime.textContent = 'Never';
+      if (debugMetaDomain) debugMetaDomain.textContent = '—';
+      if (debugMetaCount) debugMetaCount.textContent = '0 sugg.';
+      if (debugRawView) debugRawView.textContent = '{\n  "message": "No captured suggestions found."\n}';
+      return;
+    }
+
+    if (currentDebugIndex < 0) currentDebugIndex = 0;
+    if (currentDebugIndex >= debugEntries.length) currentDebugIndex = debugEntries.length - 1;
+
+    const entry = debugEntries[currentDebugIndex];
+
+    // Navigation buttons: index 0 is newest, index N is oldest
+    if (debugNavCounter) {
+      debugNavCounter.textContent = `${currentDebugIndex + 1} / ${debugEntries.length}`;
+    }
+    if (btnDebugPrev) {
+      // Prev goes to older entry (higher index)
+      btnDebugPrev.disabled = (currentDebugIndex >= debugEntries.length - 1);
+    }
+    if (btnDebugNext) {
+      // Next goes to newer entry (lower index)
+      btnDebugNext.disabled = (currentDebugIndex <= 0);
+    }
+
+    // Query card
+    if (debugQueryVal) {
+      debugQueryVal.textContent = entry.query || '(empty)';
+    }
+
+    if (debugMetaTime) {
+      if (entry.isLive) {
+        debugMetaTime.textContent = '🔴 Live Tab';
+      } else if (entry.timestamp) {
+        const d = new Date(entry.timestamp);
+        debugMetaTime.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } else {
+        debugMetaTime.textContent = 'Just now';
+      }
+    }
+
+    if (debugMetaDomain) {
+      debugMetaDomain.textContent = entry.googleTld || 'google.de';
+    }
+
+    const suggList = entry.suggestions || [];
+    if (debugMetaCount) {
+      debugMetaCount.textContent = `${suggList.length} suggestions`;
+    }
+
+    // Suggestions list
+    if (debugEmptyState) debugEmptyState.style.display = 'none';
+    if (debugList) {
+      debugList.style.display = 'flex';
+      debugList.innerHTML = '';
+
+      if (suggList.length === 0) {
+        debugList.innerHTML = '<div style="padding: 10px; font-size: 11px; color: #64748b; text-align: center;">No suggestions in this capture.</div>';
+      } else {
+        suggList.forEach((s, idx) => {
+          const row = document.createElement('div');
+          row.className = 'debug-item';
+
+          const left = document.createElement('div');
+          left.className = 'debug-item-left';
+
+          const num = document.createElement('span');
+          num.className = 'debug-item-num';
+          num.textContent = `${idx + 1}.`;
+
+          const text = document.createElement('span');
+          text.className = 'debug-item-text';
+          const textVal = typeof s === 'string' ? s : (s.text || '');
+          text.textContent = textVal;
+          text.title = textVal;
+
+          left.appendChild(num);
+          left.appendChild(text);
+
+          const badge = document.createElement('span');
+          badge.className = 'debug-item-badge';
+
+          const score = (typeof s === 'object' && typeof s.score === 'number') ? s.score : null;
+          if (score !== null) {
+            if (score >= 0.65) {
+              badge.className += ' badge-high';
+              badge.textContent = `High (${(score * 100).toFixed(0)}%)`;
+            } else if (score >= 0.35) {
+              badge.className += ' badge-mod';
+              badge.textContent = `Mod (${(score * 100).toFixed(0)}%)`;
+            } else if (score > 0) {
+              badge.className += ' badge-low';
+              badge.textContent = `Low (${(score * 100).toFixed(0)}%)`;
+            } else {
+              badge.className += ' badge-neutral';
+              badge.textContent = 'Neutral (0%)';
+            }
+          } else {
+            badge.className += ' badge-neutral';
+            badge.textContent = 'Unrated';
+          }
+
+          row.appendChild(left);
+          row.appendChild(badge);
+          debugList.appendChild(row);
+        });
+      }
+    }
+
+    if (debugRawView) {
+      debugRawView.textContent = JSON.stringify(entry, null, 2);
+    }
+  }
+
+  // Toggle debug inspector open/close
+  if (btnToggleDebug && debugPanel) {
+    btnToggleDebug.addEventListener('click', () => {
+      const isOpen = debugPanel.style.display !== 'none';
+      if (isOpen) {
+        debugPanel.style.display = 'none';
+        btnToggleDebug.classList.remove('active');
+      } else {
+        debugPanel.style.display = 'block';
+        btnToggleDebug.classList.add('active');
+        loadCapturedSuggestions(false);
+      }
+    });
+  }
+
+  if (btnDebugClose && debugPanel) {
+    btnDebugClose.addEventListener('click', () => {
+      debugPanel.style.display = 'none';
+      if (btnToggleDebug) btnToggleDebug.classList.remove('active');
+    });
+  }
+
+  if (btnDebugPrev) {
+    btnDebugPrev.addEventListener('click', () => {
+      if (currentDebugIndex < debugEntries.length - 1) {
+        currentDebugIndex++;
+        renderCurrentDebugEntry();
+      }
+    });
+  }
+
+  if (btnDebugNext) {
+    btnDebugNext.addEventListener('click', () => {
+      if (currentDebugIndex > 0) {
+        currentDebugIndex--;
+        renderCurrentDebugEntry();
+      }
+    });
+  }
+
+  if (btnDebugRefresh) {
+    btnDebugRefresh.addEventListener('click', () => {
+      loadCapturedSuggestions(true);
+    });
+  }
+
+  if (btnDebugCopy) {
+    btnDebugCopy.addEventListener('click', () => {
+      if (!debugEntries || debugEntries.length === 0) {
+        showToast('⚠️ No captured data to copy');
+        return;
+      }
+      const entry = debugEntries[currentDebugIndex];
+      const jsonStr = JSON.stringify(entry, null, 2);
+      navigator.clipboard.writeText(jsonStr).then(() => {
+        showToast('📋 Copied capture JSON to clipboard!');
+      }).catch(() => {
+        showToast('⚠️ Unable to copy to clipboard');
+      });
+    });
+  }
+
+  if (btnDebugRawToggle && debugRawView) {
+    btnDebugRawToggle.addEventListener('click', () => {
+      const isVisible = debugRawView.style.display !== 'none';
+      debugRawView.style.display = isVisible ? 'none' : 'block';
+      btnDebugRawToggle.textContent = isVisible ? '{ } Raw' : 'Hide Raw';
+    });
+  }
+
+  // Initial debug count update
+  updateDebugBadgeCount();
+
+  // Helper to trigger browser download of an object as JSON
+  function downloadBlobAsFile(content, filename) {
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 150);
+  }
+
+  function fallbackLocalExport(res) {
+    const pending = res.pendingData || [];
+    const captures = res.recentCaptures || [];
+    const merged = mergeAndDeduplicateCaptures(captures, pending);
+    const tag = res.user_pseudonym || 'anonymous';
+    if (merged.length === 0) {
+      showToast('⚠️ Target server offline and no local data buffered yet');
+      return;
+    }
+    const exportData = {
+      user_pseudonym: tag,
+      exportedAt: new Date().toISOString(),
+      entryCount: merged.length,
+      entries: merged
+    };
+    downloadBlobAsFile(JSON.stringify(exportData, null, 2), `browsebias_student_dataset_${tag}.json`);
+    showToast(`📥 Exported ${merged.length} local entries as JSON!`);
+  }
+
+  // ─── Download Dataset Button (Server-aware with local fallback) ──
   if (btnDownloadDataset) {
     btnDownloadDataset.addEventListener('click', () => {
-      chrome.storage.local.get('serverUrl', (res) => {
-        const serverBase = (res.serverUrl || 'http://localhost:8765/api/upload').replace(/\/api\/upload\/?$/, '');
-        const downloadUrl = `${serverBase}/api/download/suggestions.jsonl`;
-        chrome.tabs.create({ url: downloadUrl });
-      });
+      chrome.storage.local.get(
+        ['serverBaseUrl', 'serverUrl', 'serverMode', 'pendingData', 'recentCaptures', 'user_pseudonym'],
+        (res) => {
+          const serverBase = res.serverBaseUrl || (res.serverUrl || 'https://haakfab-browsebias.hf.space/api/upload').replace(/\/api\/upload\/?$/, '');
+          const serverMode = res.serverMode || 'online';
+          const downloadUrl = `${serverBase}/api/download/suggestions.jsonl`;
+
+          // If local mode is active, check if local server is responsive
+          if (serverMode === 'local') {
+            fetch(`${serverBase}/api/version`, { method: 'GET', signal: AbortSignal.timeout(1500) })
+              .then(resp => {
+                if (resp.ok) {
+                  chrome.tabs.create({ url: downloadUrl });
+                } else {
+                  fallbackLocalExport(res);
+                }
+              })
+              .catch(() => {
+                // Local server is offline -> export student's own observations
+                fallbackLocalExport(res);
+              });
+          } else {
+            // Online (Hugging Face) or custom mode: open server download
+            chrome.tabs.create({ url: downloadUrl });
+          }
+        }
+      );
     });
   }
 
@@ -361,6 +760,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (statusVtagEl) {
       statusVtagEl.textContent = settings.versionTag || VERSION_TAG;
     }
+
+    if (statusServerMode) {
+      const mode = settings.serverMode || 'online';
+      if (mode === 'local') {
+        statusServerMode.textContent = 'Local (8765)';
+        statusServerMode.style.color = '#38bdf8';
+      } else if (mode === 'custom') {
+        statusServerMode.textContent = 'Custom';
+        statusServerMode.style.color = '#fbbf24';
+      } else {
+        statusServerMode.textContent = 'Online (HF)';
+        statusServerMode.style.color = '#4ade80';
+      }
+    }
   }
 
   // ─── Simple toast notification ─────────────────────────────────
@@ -393,5 +806,6 @@ document.addEventListener('DOMContentLoaded', () => {
       ['pendingData', 'lastUploadTime', 'scrapingEnabled', 'consentGiven', 'highlightingEnabled', 'versionTag'],
       updateStatus
     );
+    updateDebugBadgeCount();
   });
 });

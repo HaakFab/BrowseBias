@@ -29,7 +29,28 @@ function generatePseudonym() {
   return `${adj}-${animal}-${num}`;
 }
 
+// ─── Server Configurations ─────────────────────────────────────────
+const DEFAULT_ONLINE_SERVER = 'https://haakfab-browsebias.hf.space';
+const DEFAULT_LOCAL_SERVER = 'http://localhost:8765';
+
+function computeEndpoints(mode = 'online', customUrl = '') {
+  let base = DEFAULT_ONLINE_SERVER;
+  if (mode === 'local') {
+    base = DEFAULT_LOCAL_SERVER;
+  } else if (mode === 'custom' && customUrl) {
+    base = customUrl.replace(/\/+$/, '');
+  }
+  return {
+    serverBaseUrl: base,
+    serverUrl: `${base}/api/upload`,
+    lexiconUrl: `${base}/api/lexicon`,
+    reportUrl: `${base}/api/report`,
+  };
+}
+
 // ─── Default settings ──────────────────────────────────────────────
+
+const initialEndpoints = computeEndpoints('online');
 
 const DEFAULT_SETTINGS = {
   highlightingEnabled: true,
@@ -37,9 +58,14 @@ const DEFAULT_SETTINGS = {
   consentGiven: false,
   autoSyncEnabled: true,          // automated background sync
   uploadIntervalMinutes: 60,      // 60 minutes (1 hour) default batch interval
-  serverUrl: 'http://localhost:8765/api/upload', // dev default; change for production
-  lexiconUrl: 'http://localhost:8765/api/lexicon',
-  reportUrl: 'http://localhost:8765/api/report',
+  serverMode: 'online',           // 'online' (default Hugging Face), 'local', or 'custom'
+  onlineServerUrl: DEFAULT_ONLINE_SERVER,
+  localServerUrl: DEFAULT_LOCAL_SERVER,
+  customServerUrl: '',
+  serverBaseUrl: initialEndpoints.serverBaseUrl,
+  serverUrl: initialEndpoints.serverUrl,
+  lexiconUrl: initialEndpoints.lexiconUrl,
+  reportUrl: initialEndpoints.reportUrl,
   user_pseudonym: '',             // auto-assigned or custom pseudonym tag
   pendingData: [],
   lastUploadTime: null,
@@ -184,10 +210,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     'versionTag',
     'uploadIntervalMinutes',
     'autoSyncEnabled',
-    'user_pseudonym'
+    'user_pseudonym',
+    'serverMode',
+    'customServerUrl'
   ]);
 
   const assignedPseudonym = existing.user_pseudonym || generatePseudonym();
+  const currentMode = existing.serverMode || DEFAULT_SETTINGS.serverMode;
+  const currentCustom = existing.customServerUrl || '';
+  const endpoints = computeEndpoints(currentMode, currentCustom);
 
   if (details.reason === 'install') {
     // Set default settings
@@ -200,12 +231,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // Open the onboarding/consent page
     chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding.html') });
   } else {
-    // Make sure user_pseudonym exists for existing installs too
+    // Make sure user_pseudonym and active endpoints exist for existing installs too
     await chrome.storage.local.set({
       versionTag: VERSION_TAG,
       user_pseudonym: assignedPseudonym,
       uploadIntervalMinutes: existing.uploadIntervalMinutes || DEFAULT_SETTINGS.uploadIntervalMinutes,
-      autoSyncEnabled: existing.autoSyncEnabled !== undefined ? existing.autoSyncEnabled : DEFAULT_SETTINGS.autoSyncEnabled
+      autoSyncEnabled: existing.autoSyncEnabled !== undefined ? existing.autoSyncEnabled : DEFAULT_SETTINGS.autoSyncEnabled,
+      serverMode: currentMode,
+      customServerUrl: currentCustom,
+      ...endpoints
     });
   }
 
@@ -301,6 +335,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'setServerMode') {
+    const mode = message.serverMode || 'online';
+    const custom = (message.customServerUrl || '').trim();
+    const endpoints = computeEndpoints(mode, custom);
+    chrome.storage.local.set({
+      serverMode: mode,
+      customServerUrl: custom,
+      ...endpoints
+    }, () => {
+      // Sync lexicon immediately from newly selected server
+      syncLexicon().then(lexRes => {
+        sendResponse({ success: true, mode, endpoints, lexicon: lexRes });
+      });
+    });
+    return true;
+  }
+
   if (message.type === 'getVersionInfo') {
     sendResponse({
       version: chrome.runtime.getManifest().version,
@@ -310,7 +361,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'clearData') {
-    chrome.storage.local.set({ pendingData: [] }, () => {
+    chrome.storage.local.set({ pendingData: [], recentCaptures: [] }, () => {
       sendResponse({ success: true });
     });
     return true;

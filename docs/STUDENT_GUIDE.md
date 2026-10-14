@@ -7,10 +7,12 @@ Welcome to the **BrowseBias** empirical audit toolkit. This guide walks you thro
 ## 🚀 Quick Navigation
 1. [Installing the Chrome Extension](#1-installing-the-chrome-extension)
 2. [Setting Your Pseudonym / Cohort Tag](#2-setting-your-pseudonym--cohort-tag)
-3. [Auditing Google Search Autocomplete](#3-auditing-google-search-autocomplete)
-4. [Reporting Problematic Suggestions](#4-reporting-problematic-suggestions)
-5. [Running the Automated Collector (Easy GUI)](#5-running-the-automated-collector-easy-gui)
-6. [Offline Dataset Inspection with the Standalone Viewer](#6-offline-dataset-inspection-with-the-standalone-viewer)
+3. [Configuring Server Target: Online vs. Local Server](#3-configuring-server-target-online-vs-local-server)
+4. [Auditing Google Search Autocomplete](#4-auditing-google-search-autocomplete)
+5. [Reporting Problematic Suggestions](#5-reporting-problematic-suggestions)
+6. [Running the Automated Collector (Easy GUI)](#6-running-the-automated-collector-easy-gui)
+7. [Downloading Datasets & Local Fallback Export](#7-downloading-datasets--local-fallback-export)
+8. [Offline Dataset Inspection with the Standalone Viewer](#8-offline-dataset-inspection-with-the-standalone-viewer)
 
 ---
 
@@ -48,6 +50,9 @@ To preserve privacy while allowing researchers to compare how Google autocomplet
 |  Data Logging                  [ ON  ]                |
 |  Auto-Upload Sync              [ Every 1 hour ▼ ]     |
 |                                                       |
+|  Server Target                                        |
+|  [ Online Server (Hugging Face)                     ▼]|
+|                                                       |
 |  User Tag / Pseudonym                                 |
 |  Auditor cohort or participant tag                    |
 |  [ Curious-Fox-42       ]  [Save]  [🎲]               |
@@ -62,9 +67,45 @@ To preserve privacy while allowing researchers to compare how Google autocomplet
    - Enter your assigned research group tag (e.g. `CohortA-Group2`, `Audit-DE-01`) and click **Save**.
 4. All subsequent search recordings and feedback reports will be attributed cleanly to this cohort pseudonym.
 
+### Debugging: Inspecting Last Captured Suggestions
+
+To verify that Google autocomplete suggestions are being properly captured and scored:
+1. Open the plugin popup.
+2. Under **Settings**, click **🔍 Inspect** on the **Captured Suggestions** row.
+3. A collapsible drawer appears displaying:
+   - The query, domain, and timestamp.
+   - The list of captured autocomplete suggestions with their numerical bias pills (High, Moderate, Low, Neutral).
+   - Navigation buttons (`◀` / `▶`) to step backward and forward through recently captured queries.
+   - **📋 Copy JSON** to copy the capture data to your clipboard, or **{ } Raw** to view the raw JSON payload.
+
 ---
 
-## 3. Auditing Google Search Autocomplete
+## 3. Configuring Server Target: Online vs. Local Server
+
+BrowseBias supports both cloud research collection and fully offline/local student self-hosting.
+
+### Option A: Online Server (Default — Zero Setup)
+- **Default Target:** `Online Server (Hugging Face)`
+- Students do not need to install Python, run background services, or manage ports. All suggestions and reports sync seamlessly to the course cloud backend.
+- The Status section displays `Active Server: Online (HF)` with a green badge.
+
+### Option B: Local Server (Optional — Self-Hosted)
+If you would like to run your own local backend and retain full ownership of all collected data:
+1. Open a terminal in the `BrowseBias` folder and start the local server:
+   ```bash
+   python server/app.py
+   ```
+   (Listens on `http://localhost:8765`)
+2. In the plugin popup, change **Server Target** to:
+   `Local Server (localhost:8765)`
+3. The extension immediately switches its sync endpoint, lexicon URL, and report channels to your local machine.
+
+### Option C: Custom Server URL
+If your instructor or research group provides a dedicated URL (e.g. a university server or private Hugging Face space), select `Custom Server URL...`, enter the base URL (e.g. `https://my-course-bias-server.hf.space`), and click **Save**.
+
+---
+
+## 4. Auditing Google Search Autocomplete
 
 1. Navigate to [Google Search](https://www.google.de) or [Google.com](https://www.google.com).
 2. Start typing a query (e.g. `"olaf scholz skandal"`, `"climate change"`, or `"asylbewerber"`).
@@ -84,7 +125,7 @@ Google Search Box: [ olaf scholz skandal                 ]
 
 ---
 
-## 4. Reporting Problematic Suggestions
+## 5. Reporting Problematic Suggestions
 
 If you encounter an autocomplete suggestion that you observe is harmful, defamatory, or incorrectly labeled:
 
@@ -98,7 +139,7 @@ If you encounter an autocomplete suggestion that you observe is harmful, defamat
 
 ---
 
-## 5. Running the Automated Collector (Easy GUI)
+## 6. Running the Automated Collector (Easy GUI)
 
 To systematically collect autocomplete suggestions across extensive keyword datasets without manual typing, use the cross-platform **Collector Simulator** with its local web GUI.
 
@@ -131,19 +172,39 @@ A browser window will open automatically at `http://localhost:8766`:
 ```
 
 1. Select a keyword preset or paste your own custom keywords.
-2. Click **▶ Start Collection**.
-3. A Playwright browser window will launch and simulate natural human typing speeds, triggering Google autocomplete while the extension captures and scores the suggestions.
-4. Click **⏹ Stop Collection** anytime to pause or stop.
+2. Choose your **Google Domain** and **Interface Language** (defaults to `de-DE` for German searches, but English, French, and Spanish are available).
+3. Click **▶ Start Collection**.
+4. A Playwright browser window will launch and simulate natural human typing speeds, triggering Google autocomplete while the extension captures and scores the suggestions.
+5. **Important:** Do *not* minimize the simulator browser window to your Dock or Taskbar! Minimizing strips window focus, which causes Google to close the autocomplete dropdown. You may keep the window unminimized in the background behind other open programs.
+6. Click **⏹ Stop Collection** anytime to pause or stop.
 
 ---
 
-## 6. Offline Dataset Inspection with the Standalone Viewer
+## 7. Downloading Datasets & Local Fallback Export
+
+In the extension popup, under **Data & Privacy**, you will find the **📥 Download Annotated Dataset** button.
+
+The button dynamically adapts to your selected server target:
+
+1. **When Online (or Local Server is Running):**
+   - The extension contacts the active server (`/api/download/suggestions.jsonl`).
+   - Your browser downloads the aggregated, annotated suggestions dataset collected across all audit runs.
+
+2. **When Local Server is Offline / Not Running:**
+   - If you switched to `Local Server (localhost:8765)` but have not started `python server/app.py`, the extension does **not** fail with an error or broken page.
+   - Instead, it automatically exports all autocomplete suggestions recorded directly inside your own browser as a clean JSON file named:
+     `browsebias_student_dataset_<cohort_tag>.json`
+   - You can immediately open or import this file into the offline viewer or submit it to your course instructor.
+
+---
+
+## 8. Offline Dataset Inspection with the Standalone Viewer
 
 To inspect and explore your collected research datasets without needing to run a server:
 
 1. Locate the file `viewer/dataset_viewer.html` in the repository.
 2. **Double-click it** to open it in any web browser (`file:///...`).
-3. Drag & drop your downloaded `suggestions.jsonl`, `uploads.jsonl`, `reports.jsonl`, or `lexicon.json` file into the dashed box.
+3. Drag & drop your downloaded `suggestions.jsonl`, `uploads.jsonl`, `reports.jsonl`, `lexicon.json`, or exported `browsebias_student_dataset_*.json` file into the dashed box.
 4. Or click **⚡ Load Realistic Audit Sample** to explore the multi-tab interface immediately!
 
 ### Viewer Features:

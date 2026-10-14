@@ -15,25 +15,46 @@ This guide is designed for primary investigators, researchers, and administrator
 
 ## 1. Server Setup & Configuration
 
-### Prerequisites
-- Python 3.9+
-- Dependencies: `pip install flask flask-cors openai pyyaml`
-
-### Starting the Server
+### Local Server Setup
 From the repository root:
 ```bash
+pip install -r requirements.txt
 python server/app.py
 ```
-By default, the server runs on port **8765**:
+By default, the server runs locally on port **8765**:
 - Research Dashboard: `http://localhost:8765`
 - Standalone Multi-Tab Viewer: `http://localhost:8765/viewer`
 - Bundle Download: `http://localhost:8765/api/download/bundle`
 - Model Discovery API: `http://localhost:8765/api/models/available`
 
-### Deploying for Participant Access
-To allow study participants across local networks, university VPNs, or public domains to upload data:
-- Set environment variable `PORT=8765` (or custom port).
-- Provide participants with your server IP (e.g. `http://your-server-ip:8765/api/upload`) or reverse-proxied domain to enter in their extension settings.
+---
+
+### Cloud Deployment: Hugging Face Spaces (100% Free via Gradio SDK)
+
+BrowseBias is configured for zero-friction, completely free deployment to **Hugging Face Spaces** using the **Gradio SDK** (no paid Docker subscription or credit card required).
+
+#### Step-by-Step Free Deployment:
+1. **Create Space:** On Hugging Face (`huggingface.co/new-space`):
+   - **Space Name:** `browsebias`
+   - **Space SDK:** Choose **Gradio** (Free CPU tier)
+   - **Visibility:** **Public** (required so the Chrome extension can reach the API)
+2. **Push Repository:**
+   Clone your Space repository locally or push your BrowseBias code:
+   ```bash
+   git remote add hf https://huggingface.co/spaces/<your-username>/browsebias
+   git push hf main
+   ```
+   *(Ensure `app.py`, `requirements.txt`, and `README_HF.md` [copied as `README.md`] are in the root).*
+3. **Configure Secrets (`Settings` -> `Variables and secrets`):**
+   - `ADMIN_PASSWORD`: **(Recommended)** Set an admin password. Protects the Bradley-Terry rating pipeline from unauthorized runs while keeping student autocomplete collection completely open.
+   - `THKI_KEY`: *(Optional)* Your TH Köln KI Connect key for free European campus LLM inference.
+   - `GOOGLE_API_KEY`: *(Optional)* For Gemini models (`gemini-3.5-flash-lite`).
+   - `OPENAI_API_KEY`: *(Optional)* For GPT models.
+4. **How It Works:**
+   - Hugging Face launches `app.py` automatically.
+   - Students' Chrome extension communicates with `https://<your-username>-browsebias.hf.space/api/upload` and `/api/lexicon`.
+   - Browser visitors to your Space see the interactive dashboard with live suggestion metrics and dataset download links.
+   - Students can always switch to `Local Server (localhost:8765)` in the extension popup if they want to run locally.
 
 ---
 

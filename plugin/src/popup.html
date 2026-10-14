@@ -57,6 +57,29 @@
       </select>
     </div>
 
+    <!-- Server Target Setting (Online Hugging Face vs Local Server) -->
+    <div class="setting-row" id="server-target-row">
+      <div class="setting-info">
+        <span class="setting-label">Server Target</span>
+        <span class="setting-desc" id="server-target-desc">Where data &amp; lexicons sync</span>
+      </div>
+      <select id="select-server-mode" class="popup-select">
+        <option value="online">🌐 Online Server (Hugging Face)</option>
+        <option value="local">💻 Local Server (localhost:8765)</option>
+        <option value="custom">⚙️ Custom Server URL...</option>
+      </select>
+    </div>
+
+    <!-- Custom Server URL input (collapsible) -->
+    <div class="setting-row" id="custom-server-row" style="display: none; padding-top: 0px;">
+      <div class="setting-info" style="width: 100%;">
+        <div style="display: flex; gap: 6px; width: 100%; margin-top: 4px;">
+          <input type="text" id="input-custom-server" class="popup-input" placeholder="https://your-server.com" style="flex: 1; font-family: monospace; font-size: 11px;">
+          <button id="btn-save-custom-server" class="btn btn-tiny btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Pseudonym / Cohort Tag Setting -->
     <div class="setting-row" id="pseudonym-row">
       <div class="setting-info">
@@ -68,6 +91,61 @@
         <button id="btn-save-pseudonym" class="btn btn-tiny btn-primary" title="Save pseudonym">Save</button>
         <button id="btn-random-pseudonym" class="btn btn-tiny btn-secondary" title="Generate random pseudonym">🎲</button>
       </div>
+    </div>
+
+    <!-- Debug Captured Suggestions Inspection -->
+    <div class="setting-row" id="debug-captured-row">
+      <div class="setting-info">
+        <span class="setting-label">Captured Suggestions</span>
+        <span class="setting-desc">Inspect recorded autocomplete (debug)</span>
+      </div>
+      <button id="btn-toggle-debug" class="btn btn-tiny btn-secondary" title="Inspect last captured autocomplete suggestions">
+        🔍 Inspect (<span id="debug-badge-count">0</span>)
+      </button>
+    </div>
+
+    <!-- Debug Inspector Panel (Collapsible) -->
+    <div class="debug-panel" id="debug-panel" style="display: none;">
+      <div class="debug-panel-header">
+        <div class="debug-header-title">
+          <span class="debug-title-icon">🧪</span>
+          <span class="debug-title-text">Captured Suggestions</span>
+        </div>
+        <div class="debug-nav-controls">
+          <button id="btn-debug-prev" class="btn btn-tiny btn-secondary btn-icon-nav" title="Older capture" disabled>◀</button>
+          <span id="debug-nav-counter" class="debug-nav-text">0 / 0</span>
+          <button id="btn-debug-next" class="btn btn-tiny btn-secondary btn-icon-nav" title="Newer capture" disabled>▶</button>
+          <button id="btn-debug-refresh" class="btn btn-tiny btn-secondary btn-icon-nav" title="Refresh live capture">🔄</button>
+        </div>
+      </div>
+
+      <div class="debug-query-card">
+        <div class="debug-query-row">
+          <span class="debug-label">Query:</span>
+          <span class="debug-query-val" id="debug-query-val">—</span>
+        </div>
+        <div class="debug-query-meta">
+          <span class="debug-meta-item" id="debug-meta-time">Never</span>
+          <span class="debug-meta-item" id="debug-meta-domain">google</span>
+          <span class="debug-meta-item" id="debug-meta-count">0 sugg.</span>
+        </div>
+      </div>
+
+      <div class="debug-suggestions-scroll" id="debug-suggestions-scroll">
+        <div class="debug-empty-state" id="debug-empty-state">
+          No captured suggestions found.<br>
+          <span style="font-size: 10.5px; color: #64748b;">Type a query on Google Search to capture.</span>
+        </div>
+        <div class="debug-list" id="debug-list" style="display: none;"></div>
+      </div>
+
+      <div class="debug-footer-actions">
+        <button id="btn-debug-copy" class="btn btn-tiny btn-secondary" title="Copy captured entry as JSON">📋 Copy JSON</button>
+        <button id="btn-debug-raw-toggle" class="btn btn-tiny btn-secondary" title="Toggle raw JSON view">{ } Raw</button>
+        <button id="btn-debug-close" class="btn btn-tiny btn-secondary" title="Close debug inspector">✕ Close</button>
+      </div>
+
+      <pre class="debug-raw-view" id="debug-raw-view" style="display: none;"></pre>
     </div>
 
     <!-- Consent notice (shown when toggling scraping on without consent) -->
@@ -110,6 +188,10 @@
     <!-- Status section -->
     <div class="section-title">Status</div>
     <div class="status-section">
+      <div class="status-row">
+        <span class="status-label">Active Server:</span>
+        <span class="status-value mono" id="status-server-mode" title="Target research server">Online (HF)</span>
+      </div>
       <div class="status-row">
         <span class="status-label">Buffered entries:</span>
         <span class="status-value" id="pending-count">0</span>

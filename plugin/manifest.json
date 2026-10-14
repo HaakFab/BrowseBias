@@ -10,7 +10,11 @@
     "*://www.google.co.uk/*",
     "*://www.google.fr/*",
     "*://www.google.es/*",
-    "*://www.google.it/*"
+    "*://www.google.it/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*.hf.space/*",
+    "https://*/*"
   ],
   "content_scripts": [
     {

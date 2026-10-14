@@ -1,0 +1,24 @@
+# BrowseBias — Python Requirements (Hugging Face Spaces Gradio SDK & Local Server)
+flask>=3.0
+flask-cors>=4.0
+gradio>=4.0
+fastapi>=0.100
+uvicorn>=0.20
+a2wsgi>=1.10
+
+# LLM Providers (for research rating engine)
+google-generativeai>=0.8
+openai>=1.30
+
+# NLP & Entity Normalization
+spacy>=3.7
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl#egg=en_core_web_sm
+
+# Bradley-Terry Model Fitting & Mathematics
+numpy>=1.26
+scipy>=1.12
+
+# Pipeline Scheduling & Utilities
+apscheduler>=3.10
+pyyaml>=6.0
+tqdm>=4.66

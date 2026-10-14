@@ -1,3 +1,14 @@
+---
+title: Browsebias
+emoji: ⚖️
+colorFrom: indigo
+colorTo: blue
+sdk: gradio
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # BrowseBias — Algorithmic Audit & Autocomplete Bias Research Ecosystem
 
 [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/HaakFab/BrowseBias)

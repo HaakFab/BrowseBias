@@ -254,10 +254,73 @@
     const suggestions = findSuggestions();
     suggestions.forEach(processSuggestion);
 
-    // Scrape if enabled
+    // Always record latest suggestions to debug ring buffer for immediate inspection in popup
+    if (suggestions.length > 0) {
+      updateDebugCapture(suggestions);
+    }
+
+    // Scrape into persistent batch upload buffer if enabled
     if (scrapingEnabled && suggestions.length > 0) {
       scrapeData(suggestions);
     }
+  }
+
+  // ─── Core: Debug Capture Ring Buffer ────────────────────────────────
+  let lastDebugFingerprint = '';
+
+  /**
+   * Keep a lightweight ring buffer of the most recently captured search queries
+   * and suggestions in local storage for developer & user debugging in the popup.
+   *
+   * @param {Element[]} suggestionElements - The suggestion DOM elements.
+   */
+  function updateDebugCapture(suggestionElements) {
+    const query = getSearchQuery();
+    if (!query) return;
+
+    const suggestions = suggestionElements
+      .map((el) => {
+        const text = extractSuggestionText(el);
+        if (!text) return null;
+        const scoreAttr = el.getAttribute('data-bias-score');
+        return {
+          text: text,
+          score: scoreAttr ? parseFloat(scoreAttr) : null
+        };
+      })
+      .filter(Boolean);
+
+    if (suggestions.length === 0) return;
+
+    const fingerprint = query + '|' + suggestions.map((s) => s.text).join('|');
+    if (fingerprint === lastDebugFingerprint) return;
+    lastDebugFingerprint = fingerprint;
+
+    const VERSION_TAG = 'Silurian';
+    const manifestVersion = chrome.runtime.getManifest().version;
+
+    chrome.storage.local.get({ recentCaptures: [], user_pseudonym: 'anonymous' }, (res) => {
+      const userTag = res.user_pseudonym || 'anonymous';
+      const entry = {
+        timestamp: new Date().toISOString(),
+        query: query,
+        suggestions: suggestions,
+        googleTld: window.location.hostname,
+        language: navigator.language || 'unknown',
+        user_pseudonym: userTag,
+        user_tag: userTag,
+        version: manifestVersion,
+        v_tag: VERSION_TAG
+      };
+
+      const list = res.recentCaptures || [];
+      list.push(entry);
+      // Keep last 30 captures in the debug buffer
+      if (list.length > 30) {
+        list.splice(0, list.length - 30);
+      }
+      chrome.storage.local.set({ recentCaptures: list });
+    });
   }
 
   // ─── Core: Data scraping ────────────────────────────────────────────
@@ -326,7 +389,7 @@
 
   // ─── Reporting & Query Inspection Listener ──────────────────────────
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'getSuggestionsForReport') {
+    if (message.type === 'getSuggestionsForReport' || message.type === 'getLiveSuggestions') {
       const query = getSearchQuery();
       const suggestionElements = findSuggestions();
       const suggestions = suggestionElements
@@ -347,7 +410,8 @@
         googleTld: window.location.hostname,
         language: navigator.language || 'unknown',
         version: chrome.runtime.getManifest().version,
-        v_tag: 'Ordovician'
+        v_tag: 'Silurian',
+        timestamp: new Date().toISOString()
       });
       return true;
     }

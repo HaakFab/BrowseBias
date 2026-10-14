@@ -36,6 +36,8 @@ server/data/engine_state/*
 collector/browser_profile/
 browser_profile/
 .politicians_cache.json
+collector/pseudonym.txt
+*copy*
 *.log
 
 # macOS & System Files

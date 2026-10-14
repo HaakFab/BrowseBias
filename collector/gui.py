@@ -21,6 +21,8 @@ import urllib.parse
 import webbrowser
 from pathlib import Path
 
+import config
+
 BASE_DIR = Path(__file__).resolve().parent
 PLUGIN_DIR = (BASE_DIR.parent / "plugin").resolve()
 KEYWORDS_DIR = BASE_DIR
@@ -150,6 +152,12 @@ class CollectorHTTPHandler(http.server.SimpleHTTPRequestHandler):
             for f in BASE_DIR.glob("*.txt"):
                 presets.append(f.name)
             self.wfile.write(json.dumps({"presets": sorted(presets)}).encode("utf-8"))
+        elif path == "/api/pseudonym":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            pseudonym = config.get_or_create_pseudonym()
+            self.wfile.write(json.dumps({"pseudonym": pseudonym}).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -172,6 +180,17 @@ class CollectorHTTPHandler(http.server.SimpleHTTPRequestHandler):
             # Build command args
             cmd = [sys.executable, str(BASE_DIR / "collector.py")]
 
+            # Auditor Pseudonym handling
+            pseudonym = (data.get("pseudonym") or "").strip()
+            if not pseudonym:
+                pseudonym = config.get_or_create_pseudonym()
+            else:
+                try:
+                    config.PSEUDONYM_FILE.write_text(pseudonym + "\n", encoding="utf-8")
+                except Exception:
+                    pass
+            cmd.extend(["-p", pseudonym])
+
             # Keywords handling
             keyword_mode = data.get("keyword_mode", "preset")
             if keyword_mode == "custom":
@@ -188,6 +207,10 @@ class CollectorHTTPHandler(http.server.SimpleHTTPRequestHandler):
             url = data.get("url", "https://www.google.de")
             cmd.extend(["-u", url])
 
+            # Language / Locale
+            lang = data.get("lang", "de-DE")
+            cmd.extend(["-l", lang])
+
             # Typos
             typos = int(data.get("typos", 0))
             cmd.extend(["-t", str(typos)])
@@ -196,9 +219,21 @@ class CollectorHTTPHandler(http.server.SimpleHTTPRequestHandler):
             pause = str(data.get("pause", 1.5))
             cmd.extend(["--pause", pause])
 
+            # Speed pacing
+            speed = data.get("speed", "normal")
+            cmd.extend(["--speed", speed])
+
             # Alphabet
             if not data.get("alphabet", True):
                 cmd.append("--no-alphabet")
+
+            # Restart every N keywords (anti-throttling)
+            restart_every = int(data.get("restart_every", config.RESTART_EVERY_KEYWORDS))
+            cmd.extend(["--restart-every", str(restart_every)])
+
+            # Flush every N keywords (server upload)
+            flush_every = int(data.get("flush_every", config.FLUSH_EVERY_KEYWORDS))
+            cmd.extend(["--flush-every", str(flush_every)])
 
             # Run in background thread
             t = threading.Thread(target=run_collector_process, args=(cmd,), daemon=True)
@@ -208,6 +243,17 @@ class CollectorHTTPHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "started"}).encode("utf-8"))
+
+        elif path == "/api/pseudonym/randomize":
+            new_pseudonym = config.generate_pseudonym()
+            try:
+                config.PSEUDONYM_FILE.write_text(new_pseudonym + "\n", encoding="utf-8")
+            except Exception:
+                pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"pseudonym": new_pseudonym}).encode("utf-8"))
 
         elif path == "/api/stop":
             stop_collector_process()
@@ -436,6 +482,14 @@ GUI_HTML = """<!DOCTYPE html>
         </div>
 
         <div class="form-row">
+            <label class="form-label">Auditor Pseudonym:</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" id="auditor-pseudonym" class="form-input" style="font-family: var(--font-mono); font-weight: 600;" placeholder="e.g. Amber-Otter-48">
+                <button class="btn" type="button" onclick="randomizePseudonym()" title="Generate new random pseudonym" style="white-space: nowrap; padding: 7px 12px;">🎲 New</button>
+            </div>
+        </div>
+
+        <div class="form-row">
             <label class="form-label">Keyword Source:</label>
             <div>
                 <select id="keyword-mode" class="form-select" onchange="toggleKeywordMode(this.value)">
@@ -449,6 +503,7 @@ GUI_HTML = """<!DOCTYPE html>
             <label class="form-label">Preset File:</label>
             <div>
                 <select id="preset-select" class="form-select">
+                    <option value="50_keywords_topics.txt" selected>50_keywords_topics.txt (50 German Political Topics)</option>
                     <option value="keywords_bundestag.txt">keywords_bundestag.txt (Bundestag Politicians)</option>
                     <option value="keywords.txt">keywords.txt (General / German Topics)</option>
                 </select>
@@ -470,6 +525,37 @@ GUI_HTML = """<!DOCTYPE html>
                     <option value="https://www.google.com">https://www.google.com (US / Global)</option>
                     <option value="https://www.google.co.uk">https://www.google.co.uk (United Kingdom)</option>
                 </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label">Interface Language:</label>
+            <div>
+                <select id="interface-lang" class="form-select">
+                    <option value="de-DE" selected>🇩🇪 German (de-DE)</option>
+                    <option value="en-GB">🇬🇧 English - UK (en-GB)</option>
+                    <option value="en-US">🇺🇸 English - US (en-US)</option>
+                    <option value="fr-FR">🇫🇷 French (fr-FR)</option>
+                    <option value="es-ES">🇪🇸 Spanish (es-ES)</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: block;">
+                    Sets browser locale, Accept-Language headers, and Google UI language parameter (&hl=de).
+                </span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label">Simulation Speed:</label>
+            <div>
+                <select id="sim-speed" class="form-select">
+                    <option value="ultra-fast">⚡ Ultra-Fast (~20ms typing, 180ms suggestion wait) [Testing]</option>
+                    <option value="fast">🚀 Fast (~35ms typing, 300ms suggestion wait) [Testing]</option>
+                    <option value="normal" selected>⏱ Normal (45-110ms human cadence, 500ms suggestion wait)</option>
+                    <option value="relaxed">🐢 Relaxed (70-150ms cadence, 800ms suggestion wait)</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: block;">
+                    Controls keystroke delay, suggestion wait time, and alphabet cycle pacing.
+                </span>
             </div>
         </div>
 
@@ -499,11 +585,45 @@ GUI_HTML = """<!DOCTYPE html>
             <label class="form-label">Pause Between Queries:</label>
             <div>
                 <select id="pause-seconds" class="form-select">
+                    <option value="0.2">0.2 seconds (⚡ Ultra-Fast / Testing)</option>
+                    <option value="0.5">0.5 seconds (🚀 Very Fast / Testing)</option>
+                    <option value="0.8">0.8 seconds (Brisk)</option>
                     <option value="1.0">1.0 second (Fast)</option>
-                    <option value="1.5" selected>1.5 seconds (Standard)</option>
+                    <option value="1.5" selected>1.5 seconds (Standard / Recommended)</option>
                     <option value="2.5">2.5 seconds (Deliberate / Safe)</option>
                     <option value="4.0">4.0 seconds (Low detection risk)</option>
                 </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label">Submit to Server:</label>
+            <div>
+                <select id="flush-every" class="form-select">
+                    <option value="1">Every 1 keyword (Instant upload)</option>
+                    <option value="5" selected>Every 5 keywords (Recommended)</option>
+                    <option value="10">Every 10 keywords</option>
+                    <option value="0">Only at end of collection</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: block;">
+                    Flushes collected suggestions directly to research server during the run so no data is lost if stopped early.
+                </span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label">Restart Browser Every:</label>
+            <div>
+                <select id="restart-every" class="form-select">
+                    <option value="5">5 keywords (Aggressive anti-throttling)</option>
+                    <option value="10" selected>10 keywords (Recommended to avoid Google suggestion throttling)</option>
+                    <option value="15">15 keywords</option>
+                    <option value="20">20 keywords</option>
+                    <option value="0">Never (Single browser session)</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: block;">
+                    Relaunches the browser session while preserving your pseudonym, preventing Google from throttling autocomplete dropdowns after ~20 queries.
+                </span>
             </div>
         </div>
 
@@ -514,6 +634,21 @@ GUI_HTML = """<!DOCTYPE html>
             <button id="btn-stop" class="btn btn-stop" onclick="stopCollector()" disabled>
                 ⏹ Stop Collection
             </button>
+        </div>
+    </div>
+
+    <!-- Window Focus Advisory Notice -->
+    <div style="background: rgba(210, 153, 34, 0.12); border: 1px solid var(--accent-yellow); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; color: #f0f6fc;">
+        <div style="font-weight: 600; color: var(--accent-yellow); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <span>⚠️ Window Visibility & Suggestions Rule:</span>
+        </div>
+        <div>
+            Google's autocomplete popup requires active input focus. 
+            <strong>Do not minimize the browser window to the Dock / Taskbar</strong> during collection, as minimizing causes the operating system to strip window focus, causing Google to immediately dismiss suggestions.
+            <div style="margin-top: 4px; color: var(--text-secondary);">
+                ✓ You do <strong>not</strong> need to maximize the window or keep it in the foreground.<br>
+                ✓ You can leave the browser unminimized in the background behind other open applications.
+            </div>
         </div>
     </div>
 
@@ -593,16 +728,68 @@ GUI_HTML = """<!DOCTYPE html>
             } catch (e) {}
         }
 
+        async function loadPseudonym() {
+            try {
+                const res = await fetch('/api/pseudonym');
+                const data = await res.json();
+                if (data.pseudonym) {
+                    document.getElementById('auditor-pseudonym').value = data.pseudonym;
+                }
+            } catch (e) {}
+        }
+
+        async function randomizePseudonym() {
+            try {
+                const res = await fetch('/api/pseudonym/randomize', { method: 'POST' });
+                const data = await res.json();
+                if (data.pseudonym) {
+                    document.getElementById('auditor-pseudonym').value = data.pseudonym;
+                }
+            } catch (e) {}
+        }
+
+        async function loadPresets() {
+            try {
+                const res = await fetch('/api/presets');
+                const data = await res.json();
+                if (data.presets && data.presets.length > 0) {
+                    const sel = document.getElementById('preset-select');
+                    const currentVal = sel.value;
+                    sel.innerHTML = '';
+                    data.presets.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p;
+                        let label = p;
+                        if (p === '50_keywords_topics.txt') label = p + ' (50 German Political Topics)';
+                        else if (p === 'keywords_bundestag.txt') label = p + ' (Bundestag Politicians)';
+                        else if (p === 'keywords.txt') label = p + ' (General / German Topics)';
+                        opt.textContent = label;
+                        sel.appendChild(opt);
+                    });
+                    if (data.presets.includes(currentVal)) {
+                        sel.value = currentVal;
+                    } else if (data.presets.includes('50_keywords_topics.txt')) {
+                        sel.value = '50_keywords_topics.txt';
+                    }
+                }
+            } catch (e) {}
+        }
+
         async function startCollector() {
             const mode = document.getElementById('keyword-mode').value;
             const payload = {
+                pseudonym: document.getElementById('auditor-pseudonym').value.trim(),
                 keyword_mode: mode,
                 preset_name: document.getElementById('preset-select').value,
                 custom_keywords: document.getElementById('custom-keywords').value,
                 url: document.getElementById('google-url').value,
+                lang: document.getElementById('interface-lang').value,
+                speed: document.getElementById('sim-speed').value,
                 alphabet: document.getElementById('chk-alphabet').checked,
                 typos: parseInt(document.getElementById('typo-count').value, 10),
-                pause: parseFloat(document.getElementById('pause-seconds').value)
+                pause: parseFloat(document.getElementById('pause-seconds').value),
+                flush_every: parseInt(document.getElementById('flush-every').value, 10),
+                restart_every: parseInt(document.getElementById('restart-every').value, 10)
             };
 
             document.getElementById('btn-start').disabled = true;
@@ -631,7 +818,9 @@ GUI_HTML = """<!DOCTYPE html>
             document.getElementById('console-box').textContent = '';
         }
 
-        // Start polling loop
+        // Initialize and start polling loop
+        loadPresets();
+        loadPseudonym();
         setInterval(pollStatus, 1500);
         pollStatus();
     </script>

@@ -186,6 +186,7 @@ class OpenAIProvider(LLMProvider):
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "temperature": temp,
+            "max_tokens": 4096,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -254,6 +255,7 @@ class OpenAICompatibleProvider(LLMProvider):
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "temperature": temp,
+            "max_tokens": 4096,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -309,9 +311,9 @@ class THKIProvider(OpenAICompatibleProvider):
 
         # Certain models (e.g. openai-gpt5.4-mini) require max_completion_tokens
         if "mini" in self.model.lower() or "gpt5" in self.model.lower():
-            kwargs["max_completion_tokens"] = 1500
+            kwargs["max_completion_tokens"] = 4096
         else:
-            kwargs["max_tokens"] = 1500
+            kwargs["max_tokens"] = 4096
 
         try:
             resp = client.chat.completions.create(**kwargs)
@@ -319,11 +321,11 @@ class THKIProvider(OpenAICompatibleProvider):
             err_str = str(err)
             if "max_completion_tokens" in err_str:
                 kwargs.pop("max_tokens", None)
-                kwargs["max_completion_tokens"] = 1500
+                kwargs["max_completion_tokens"] = 4096
                 resp = client.chat.completions.create(**kwargs)
             elif "max_tokens" in err_str and "max_completion_tokens" in kwargs:
                 kwargs.pop("max_completion_tokens", None)
-                kwargs["max_tokens"] = 1500
+                kwargs["max_tokens"] = 4096
                 resp = client.chat.completions.create(**kwargs)
             else:
                 raise

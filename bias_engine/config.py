@@ -109,7 +109,7 @@ class EngineConfig:
     providers: Dict[str, LLMProviderConfig] = field(default_factory=_default_providers)
 
     # ── Identification ─────────────────────────────────────────────────
-    identification_batch_size: int = 50
+    identification_batch_size: int = 25
 
     # ── Listwise ranking ───────────────────────────────────────────────
     listwise_group_size: int = 10

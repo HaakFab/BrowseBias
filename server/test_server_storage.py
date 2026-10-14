@@ -192,6 +192,38 @@ class TestServerStorage(unittest.TestCase):
         self.assertEqual(res.headers.get('Content-Type'), 'application/zip')
         self.assertIn('browsebias_dataset_bundle.zip', res.headers.get('Content-Disposition', ''))
 
+    def test_admin_auth_protection(self):
+        import app as app_module
+        original_pw = app_module.ADMIN_PASSWORD
+        try:
+            app_module.ADMIN_PASSWORD = "test-secret-admin-pass"
+
+            # Admin dashboard should return 401 without auth
+            res_unauth = self.client.get('/')
+            self.assertEqual(res_unauth.status_code, 401)
+
+            # Rating start should return 401 without auth
+            res_rating = self.client.post('/api/ratings/start', json={})
+            self.assertEqual(res_rating.status_code, 401)
+
+            # Models refresh should return 401 without auth
+            res_models = self.client.post('/api/models/refresh')
+            self.assertEqual(res_models.status_code, 401)
+
+            # With X-Admin-Key header, admin dashboard returns 200
+            res_auth = self.client.get('/', headers={'X-Admin-Key': 'test-secret-admin-pass'})
+            self.assertEqual(res_auth.status_code, 200)
+
+            # Public endpoints must remain open without auth
+            res_lexicon = self.client.get('/api/lexicon')
+            self.assertEqual(res_lexicon.status_code, 200)
+
+            res_viewer = self.client.get('/viewer')
+            self.assertEqual(res_viewer.status_code, 200)
+        finally:
+            app_module.ADMIN_PASSWORD = original_pw
+
 
 if __name__ == '__main__':
     unittest.main()
+

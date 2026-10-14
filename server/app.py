@@ -22,16 +22,22 @@ import re
 import sys
 import threading
 from datetime import datetime
+import functools
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template_string, send_from_directory, send_file
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, send_file, Response
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)  # Allow cross-origin requests from the Chrome extension
 
 # ─── Storage & Paths ────────────────────────────────────────────────
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+# Support Hugging Face Spaces persistent storage mount at /data
+if os.path.isdir('/data') and os.access('/data', os.W_OK):
+    DATA_DIR = '/data'
+else:
+    DATA_DIR = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
+
 UPLOAD_FILE = os.path.join(DATA_DIR, 'uploads.jsonl')
 SUGGESTIONS_FILE = os.path.join(DATA_DIR, 'suggestions.jsonl')
 REPORTS_FILE = os.path.join(DATA_DIR, 'reports.jsonl')
@@ -41,6 +47,31 @@ TASK_JOURNAL_FILE = os.path.join(ENGINE_STATE_DIR, 'task_journal.jsonl')
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(ENGINE_STATE_DIR, exist_ok=True)
+
+# ─── Admin Authentication ──────────────────────────────────────────
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '').strip()
+
+def check_admin_auth():
+    if not ADMIN_PASSWORD:
+        return True  # If no ADMIN_PASSWORD set (e.g. local dev), allow open access
+    auth = request.authorization
+    if auth and (auth.password == ADMIN_PASSWORD or auth.username == ADMIN_PASSWORD):
+        return True
+    if request.headers.get('X-Admin-Key') == ADMIN_PASSWORD or request.args.get('admin_key') == ADMIN_PASSWORD:
+        return True
+    return False
+
+def require_admin(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not check_admin_auth():
+            return Response(
+                'Admin authentication required for BrowseBias Research Dashboard.\n',
+                401,
+                {'WWW-Authenticate': 'Basic realm="BrowseBias Admin"'}
+            )
+        return f(*args, **kwargs)
+    return decorated
 
 # ─── Import Bias Engine ─────────────────────────────────────────────
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -274,6 +305,7 @@ def load_rating_history(limit: int = 50) -> list:
 
 
 @app.route('/')
+@require_admin
 def dashboard():
     """Dashboard showing collected data, feedback reports, rating engine, bias scores explorer, and server status."""
     entries = []
@@ -2256,6 +2288,7 @@ loadModelCatalog();
 
 
 @app.route('/api/models/available', methods=['GET'])
+@app.route('/models/available', methods=['GET'])
 def get_available_models():
     """Return catalog of available models grouped by provider with env key status."""
     has_thki_key = bool(os.environ.get("THKI_KEY"))
@@ -2338,6 +2371,8 @@ def get_available_models():
 
 
 @app.route('/api/models/refresh', methods=['POST'])
+@app.route('/models/refresh', methods=['POST'])
+@require_admin
 def refresh_models():
     """Force fresh check of THKI models from API."""
     try:
@@ -2356,6 +2391,8 @@ def refresh_models():
 
 
 @app.route('/api/ratings/start', methods=['POST'])
+@app.route('/ratings/start', methods=['POST'])
+@require_admin
 def start_rating_job():
     """Trigger an initial or incremental rating run in background."""
     with RATING_STATE_LOCK:
@@ -2391,6 +2428,8 @@ def start_rating_job():
 
 
 @app.route('/api/ratings/status', methods=['GET'])
+@app.route('/ratings/status', methods=['GET'])
+@require_admin
 def get_rating_status():
     """Get current rating job status and logs."""
     with RATING_STATE_LOCK:
@@ -2400,6 +2439,8 @@ def get_rating_status():
 
 
 @app.route('/api/ratings/history', methods=['GET'])
+@app.route('/ratings/history', methods=['GET'])
+@require_admin
 def get_rating_history():
     """Get historical rating runs from task_journal.jsonl."""
     limit = request.args.get("limit", 50, type=int)
@@ -2411,6 +2452,7 @@ def get_rating_history():
 
 
 @app.route('/api/upload', methods=['POST'])
+@app.route('/upload', methods=['POST'])
 def upload_data():
     """Receive scraped data from the Chrome extension."""
     data = request.get_json()
@@ -2504,7 +2546,9 @@ def upload_data():
 
 
 @app.route('/api/report', methods=['POST'])
+@app.route('/report', methods=['POST'])
 @app.route('/api/feedback', methods=['POST'])
+@app.route('/feedback', methods=['POST'])
 def report_feedback():
     """Receive user reports or feedback regarding autocomplete suggestions or bias labels."""
     data = request.get_json()
@@ -2569,6 +2613,7 @@ def report_feedback():
 
 
 @app.route('/api/reports', methods=['GET'])
+@app.route('/reports', methods=['GET'])
 def get_reports():
     """Retrieve submitted reports (supports pagination and filtering)."""
     limit = request.args.get('limit', 50, type=int)
@@ -2602,6 +2647,7 @@ def get_reports():
 
 
 @app.route('/api/suggestions', methods=['GET'])
+@app.route('/suggestions', methods=['GET'])
 def get_suggestions():
     """Query collected flat suggestions."""
     limit = request.args.get('limit', 100, type=int)
@@ -2630,6 +2676,7 @@ def get_suggestions():
 
 
 @app.route('/api/score', methods=['POST'])
+@app.route('/score', methods=['POST'])
 def score_suggestion():
     """Score a single suggestion in real time against the bias lexicon."""
     data = request.get_json()
@@ -2680,6 +2727,7 @@ def get_privacy_policy():
 
 
 @app.route('/api/lexicon', methods=['GET'])
+@app.route('/lexicon', methods=['GET'])
 def get_lexicon():
     """Return the full bias lexicon."""
     lexicon = load_lexicon()
@@ -2691,6 +2739,8 @@ def get_lexicon():
 
 
 @app.route('/api/lexicon', methods=['POST'])
+@app.route('/lexicon', methods=['POST'])
+@require_admin
 def update_lexicon():
     """Update the bias lexicon (admin endpoint)."""
     data = request.get_json()
@@ -2712,6 +2762,8 @@ def update_lexicon():
 
 
 @app.route('/api/update-uploads', methods=['POST', 'GET'])
+@app.route('/update-uploads', methods=['POST', 'GET'])
+@require_admin
 def update_uploads():
     """Force-sync / update the uploads.jsonl and suggestions.jsonl files on disk."""
     entries = []
@@ -2813,6 +2865,7 @@ def update_uploads():
 
 
 @app.route('/api/download/<filename>', methods=['GET'])
+@app.route('/download/<filename>', methods=['GET'])
 def download_file(filename):
     """Download data files."""
     allowed_files = {'uploads.jsonl', 'suggestions.jsonl', 'reports.jsonl', 'lexicon.json', 'task_journal.jsonl'}
@@ -2833,7 +2886,9 @@ def download_file(filename):
 
 
 @app.route('/api/download/bundle', methods=['GET'])
+@app.route('/download/bundle', methods=['GET'])
 @app.route('/api/download/dataset_bundle.zip', methods=['GET'])
+@app.route('/download/dataset_bundle.zip', methods=['GET'])
 def download_bundle():
     """Package current dataset into a clean zip archive including the offline HTML viewer."""
     import zipfile
