@@ -30,7 +30,7 @@ function generatePseudonym() {
 }
 
 // ─── Server Configurations ─────────────────────────────────────────
-const DEFAULT_ONLINE_SERVER = 'https://haakfab-browsebias.hf.space';
+const DEFAULT_ONLINE_SERVER = 'https://haakf-browsebias.hf.space';
 const DEFAULT_LOCAL_SERVER = 'http://localhost:8765';
 
 function computeEndpoints(mode = 'online', customUrl = '') {
