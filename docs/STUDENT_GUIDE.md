@@ -85,9 +85,9 @@ To verify that Google autocomplete suggestions are being properly captured and s
 BrowseBias supports both cloud research collection and fully offline/local student self-hosting.
 
 ### Option A: Online Server (Default — Zero Setup)
-- **Default Target:** `Online Server (Hugging Face)`
+- **Default Target:** `Online Server (Cloud)` (powered by Render.com: `https://browsebias.onrender.com`)
 - Students do not need to install Python, run background services, or manage ports. All suggestions and reports sync seamlessly to the course cloud backend.
-- The Status section displays `Active Server: Online (HF)` with a green badge.
+- The Status section displays `Active Server: Online (Cloud)` with a green badge.
 
 ### Option B: Local Server (Optional — Self-Hosted)
 If you would like to run your own local backend and retain full ownership of all collected data:
@@ -101,7 +101,7 @@ If you would like to run your own local backend and retain full ownership of all
 3. The extension immediately switches its sync endpoint, lexicon URL, and report channels to your local machine.
 
 ### Option C: Custom Server URL
-If your instructor or research group provides a dedicated URL (e.g. a university server or private Hugging Face space), select `Custom Server URL...`, enter the base URL (e.g. `https://my-course-bias-server.hf.space`), and click **Save**.
+If your instructor or research group provides a dedicated URL (e.g. a university server or private cloud instance), select `Custom Server URL...`, enter the base URL (e.g. `https://custom-bias-server.com`), and click **Save**.
 
 ---
 

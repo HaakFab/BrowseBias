@@ -29,9 +29,26 @@ By default, the server runs locally on port **8765**:
 
 ---
 
-### Cloud Deployment: Hugging Face Spaces (100% Free via Gradio SDK)
+### Cloud Deployment: Render.com (Recommended Free 24/7 Hosting)
 
-BrowseBias is configured for zero-friction, completely free deployment to **Hugging Face Spaces** using the **Gradio SDK** (no paid Docker subscription or credit card required).
+BrowseBias includes a production-ready `render.yaml` blueprint for 1-click deployment on **Render.com** (Free Web Service tier):
+
+#### Step-by-Step Deployment:
+1. **Sign in to Render:** Go to [render.com](https://render.com) and log in with your GitHub account (`HaakFab`).
+2. **Launch Blueprint:**
+   - Click **New +** -> **Blueprint**.
+   - Connect the repository: `HaakFab/BrowseBias`.
+   - Render automatically parses `render.yaml`, sets up the Python 3.11 environment in Frankfurt (EU), installs `requirements.txt`, and runs `python server/app.py`.
+3. **Set Secrets:** In the Blueprint prompt, enter:
+   - `THKI_KEY`: Your THKI API key for free campus LLM rating inference.
+   - `GOOGLE_API_KEY`: Your Gemini API key (`gemini-3.5-flash-lite`).
+   - `ADMIN_PASSWORD`: A secure admin password is automatically generated (or enter a custom one).
+4. **Instant Live Domain:**
+   - Render provisions your public HTTPS endpoint: `https://browsebias.onrender.com`.
+   - Public student endpoints (`/api/upload`, `/api/lexicon`, `/api/report`, `/viewer`, `/api/download/*`) are immediately live.
+   - The Research Dashboard (`/`) and rating job triggers (`/api/ratings/start`) are protected with your `ADMIN_PASSWORD`.
+
+---
 
 #### Step-by-Step Free Deployment:
 1. **Create Space:** On Hugging Face (`huggingface.co/new-space`):

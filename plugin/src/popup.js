@@ -499,7 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.storage.local.get(
         ['serverBaseUrl', 'serverUrl', 'serverMode', 'pendingData', 'recentCaptures', 'user_pseudonym'],
         (res) => {
-          const serverBase = res.serverBaseUrl || (res.serverUrl || 'https://haakf-browsebias.hf.space/api/upload').replace(/\/api\/upload\/?$/, '');
+          const serverBase = res.serverBaseUrl || (res.serverUrl || 'https://browsebias.onrender.com/api/upload').replace(/\/api\/upload\/?$/, '');
           const serverMode = res.serverMode || 'online';
           const downloadUrl = `${serverBase}/api/download/suggestions.jsonl`;
 
@@ -770,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusServerMode.textContent = 'Custom';
         statusServerMode.style.color = '#fbbf24';
       } else {
-        statusServerMode.textContent = 'Online (HF)';
+        statusServerMode.textContent = 'Online (Cloud)';
         statusServerMode.style.color = '#4ade80';
       }
     }
