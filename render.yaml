@@ -1,0 +1,20 @@
+# Render.com Blueprint for BrowseBias Server
+# Allows 1-click deployment as a Free Web Service
+
+services:
+  - type: web
+    name: browsebias
+    runtime: python
+    plan: free
+    region: frankfurt # Low latency in Germany/Europe (or oregon/ohio)
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server/app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.4
+      - key: ADMIN_PASSWORD
+        generateValue: true # Generates a secure random admin password automatically
+      - key: THKI_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
