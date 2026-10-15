@@ -25,16 +25,32 @@ from datetime import datetime
 import functools
 from pathlib import Path
 
+# Ensure project root and server dir are in sys.path before local imports
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+SERVER_DIR = str(Path(__file__).resolve().parent)
+for p in (PROJECT_ROOT, SERVER_DIR):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 from flask import Flask, jsonify, request, render_template_string, send_from_directory, send_file, Response
 from flask_cors import CORS
 
-from server.admin_settings import (
-    get_active_version_tag, get_version_status, switch_version_tag,
-    list_archives, load_categories, save_categories, load_prompts,
-    save_prompts, reset_prompts, test_prompt_evaluation,
-    get_engine_config_overrides, save_engine_config_overrides,
-    EARTH_EPOCHS, get_next_epoch
-)
+try:
+    from server.admin_settings import (
+        get_active_version_tag, get_version_status, switch_version_tag,
+        list_archives, load_categories, save_categories, load_prompts,
+        save_prompts, reset_prompts, test_prompt_evaluation,
+        get_engine_config_overrides, save_engine_config_overrides,
+        EARTH_EPOCHS, get_next_epoch
+    )
+except ImportError:
+    from admin_settings import (
+        get_active_version_tag, get_version_status, switch_version_tag,
+        list_archives, load_categories, save_categories, load_prompts,
+        save_prompts, reset_prompts, test_prompt_evaluation,
+        get_engine_config_overrides, save_engine_config_overrides,
+        EARTH_EPOCHS, get_next_epoch
+    )
 
 app = Flask(__name__)
 CORS(app)  # Allow cross-origin requests from the Chrome extension
