@@ -86,6 +86,22 @@ class LLMProvider(ABC):
             f"provider '{self.name}': {last_error}"
         ) from last_error
 
+    def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        json_mode: bool = False,
+        temperature: Optional[float] = None,
+    ) -> str:
+        """Convenience alias for generate_with_retry."""
+        return self.generate_with_retry(
+            system_prompt,
+            user_prompt,
+            json_mode=json_mode,
+            temperature=temperature,
+        )
+
     @property
     def call_count(self) -> int:
         return self._call_count

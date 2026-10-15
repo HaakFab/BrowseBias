@@ -57,14 +57,16 @@ class Matchmaker:
         if not new_items:
             return groups
 
-        # Cold start: if existing_items < k-1, group new items among themselves
+        # Cold start: if existing_items < k-1, group new items among themselves across multiple rounds
         if len(existing_items) < k - 1:
-            pool = list(set(new_items + existing_items))
-            self.rng.shuffle(pool)
-            for i in range(0, len(pool), k):
-                chunk = pool[i : i + k]
-                if len(chunk) >= 2:
-                    groups.append(chunk)
+            rounds = max(1, n_groups_per_item)
+            for _ in range(rounds):
+                pool = list(set(new_items + existing_items))
+                self.rng.shuffle(pool)
+                for i in range(0, len(pool), k):
+                    chunk = pool[i : i + k]
+                    if len(chunk) >= 2:
+                        groups.append(chunk)
             return groups
 
         # Sort existing items by score for stratification

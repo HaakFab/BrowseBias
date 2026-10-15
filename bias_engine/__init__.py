@@ -107,30 +107,40 @@ class BiasEngine:
 
     def read_unprocessed_suggestions(self) -> List[Tuple[str, str]]:
         """
-        Read raw suggestions from suggestions.jsonl.
+        Read raw suggestions from suggestions.jsonl with fallback to score_store or lexicon.json.
         Returns:
             List of (query, suggestion_text)
         """
         raw_items: List[Tuple[str, str]] = []
-        if not os.path.exists(self.config.suggestions_file):
-            return raw_items
+        if os.path.exists(self.config.suggestions_file):
+            try:
+                with open(self.config.suggestions_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                            query = record.get("query", "")
+                            suggestion = record.get("suggestion", "")
+                            if suggestion:
+                                raw_items.append((query, suggestion))
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.error("Error reading suggestions from file: %s", e)
 
-        try:
-            with open(self.config.suggestions_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                        query = record.get("query", "")
-                        suggestion = record.get("suggestion", "")
-                        if suggestion:
-                            raw_items.append((query, suggestion))
-                    except Exception:
-                        continue
-        except Exception as e:
-            logger.error("Error reading suggestions from file: %s", e)
+        # Fallback if suggestions.jsonl has no items (e.g. on fresh deployment)
+        if not raw_items:
+            if hasattr(self, "score_store") and self.score_store and self.score_store.size > 0:
+                raw_items = [("", text) for text in self.score_store._records.keys()]
+            elif os.path.exists(self.config.lexicon_file):
+                try:
+                    with open(self.config.lexicon_file, "r", encoding="utf-8") as f:
+                        lex_data = json.load(f)
+                    raw_items = [("", text) for text in lex_data.keys() if text]
+                except Exception as e:
+                    logger.warning("Could not read lexicon fallback: %s", e)
 
         return raw_items
 
@@ -150,7 +160,7 @@ class BiasEngine:
           6. Refit Bradley-Terry model & update production lexicon
 
         Args:
-            mode: "incremental" (only unscored suggestions) or "initial" (full baseline)
+            mode: "incremental" (only unscored suggestions), "initial" (full baseline), or "cross_model_pass"
             force_all: If True, re-evaluates all suggestions from scratch
             progress_callback: Optional callback for real-time progress updates
         """
@@ -209,7 +219,7 @@ class BiasEngine:
                 {"raw_count": len(raw_items), "template_count": len(unique_normalized)},
             )
 
-            if not unique_normalized:
+            if not unique_normalized and mode != "cross_model_pass":
                 logger.info("No new unique suggestions to process. Pipeline complete.")
                 res = {
                     "status": "ok",
@@ -226,43 +236,55 @@ class BiasEngine:
                 return res
 
             # Step 2: Identification (Multi-category Tagging)
-            report_progress(
-                "identification",
-                35,
-                f"Running LLM identification on {len(unique_normalized)} templates across 6 bias dimensions...",
+            # In cross_model_pass, only identify items not yet recorded in score_store
+            items_to_identify = (
+                [t for t in unique_normalized if self.score_store.get_record(t) is None]
+                if mode == "cross_model_pass"
+                else unique_normalized
             )
-            ident_results = self.identifier.identify_batch(unique_normalized)
 
-            # Record identification log
-            with open(self.config.identification_log_file, "a", encoding="utf-8") as f:
-                for res_item in ident_results:
-                    f.write(json.dumps({
-                        "text": res_item.text,
-                        "categories": res_item.categories,
-                        "flagged_any": res_item.flagged_any,
-                        "timestamp": res_item.timestamp,
-                    }, ensure_ascii=False) + "\n")
-
-            # Mark unflagged items as unbiased in store
+            ident_results = []
             unflagged_count = 0
             flagged_count = 0
-            for res_item in ident_results:
-                if not res_item.flagged_any:
-                    self.score_store.register_unbiased(res_item.text)
-                    unflagged_count += 1
-                else:
-                    flagged_count += 1
 
-            logger.info(
-                "Identification complete: %d flagged for >=1 category, %d marked unbiased.",
-                flagged_count,
-                unflagged_count,
-            )
+            if items_to_identify:
+                report_progress(
+                    "identification",
+                    35,
+                    f"Running LLM identification on {len(items_to_identify)} templates across {len(self.framework.categories)} bias dimensions...",
+                )
+                ident_results = self.identifier.identify_batch(items_to_identify)
+
+                # Record identification log
+                with open(self.config.identification_log_file, "a", encoding="utf-8") as f:
+                    for res_item in ident_results:
+                        f.write(json.dumps({
+                            "text": res_item.text,
+                            "categories": res_item.categories,
+                            "flagged_any": res_item.flagged_any,
+                            "timestamp": res_item.timestamp,
+                        }, ensure_ascii=False) + "\n")
+
+                # Mark unflagged items as unbiased in store
+                for res_item in ident_results:
+                    if not res_item.flagged_any:
+                        self.score_store.register_unbiased(res_item.text)
+                        unflagged_count += 1
+                    else:
+                        flagged_count += 1
+
+                logger.info(
+                    "Identification complete: %d flagged for >=1 category, %d marked unbiased.",
+                    flagged_count,
+                    unflagged_count,
+                )
+            elif mode == "cross_model_pass":
+                logger.info("Cross-model pass: using existing flagged categories from ScoreStore / PCMs.")
 
             report_progress(
                 "matchmaking",
                 55,
-                f"Identification complete: {flagged_count} flagged for bias, {unflagged_count} neutral. Forming comparison groups...",
+                f"Preparing comparison groups for multi-model ranking ({flagged_count} newly flagged, {unflagged_count} neutral)...",
                 {"flagged_count": flagged_count, "unflagged_count": unflagged_count},
             )
 
@@ -272,35 +294,59 @@ class BiasEngine:
             # Step 3 & 4: Per-Category Matchmaking & Listwise Ranking
             for cat_idx, category in enumerate(self.framework.categories):
                 cat_key = category.key
-                new_flagged_for_cat = [
-                    res_item.text for res_item in ident_results if res_item.is_flagged_for(cat_key)
-                ]
 
-                if not new_flagged_for_cat:
+                # Collect candidate items for this category
+                candidate_items: Set[str] = set()
+
+                # Newly flagged from Step 2 identification
+                for res_item in ident_results:
+                    if res_item.is_flagged_for(cat_key):
+                        candidate_items.add(res_item.text)
+
+                # In cross_model_pass or force_all: include all known items in score_store flagged for cat_key
+                if mode == "cross_model_pass" or force_all:
+                    for text, rec in self.score_store._records.items():
+                        if rec.scores.get(cat_key, 0.0) > 0:
+                            candidate_items.add(text)
+                    for existing_pcm in self.state_mgr.load_all_pcms_for_category(cat_key):
+                        candidate_items.update(existing_pcm.items)
+
+                if not candidate_items:
                     continue
 
                 cat_progress = 55 + int(25 * ((cat_idx + 1) / total_categories))
                 report_progress(
                     "ranking",
                     cat_progress,
-                    f"Ranking category '{category.name}' ({len(new_flagged_for_cat)} items)...",
-                    {"category": cat_key, "category_name": category.name, "flagged": len(new_flagged_for_cat)},
+                    f"Ranking category '{category.name}' ({len(candidate_items)} items) with {self.primary_llm.model}...",
+                    {"category": cat_key, "category_name": category.name, "flagged": len(candidate_items)},
                 )
 
-                logger.info("Processing category '%s' with %d flagged items.", cat_key, len(new_flagged_for_cat))
+                logger.info("Processing category '%s' with %d flagged items.", cat_key, len(candidate_items))
 
-                # Load primary model PCM and current BT scores
+                # Load target model PCM and current BT scores
                 pcm = self.state_mgr.load_pcm(self.primary_llm.model, cat_key)
                 current_scores = self.state_mgr.load_bt_scores(cat_key)
 
-                # Matchmaking: form stratified groups of size k
-                groups = self.matchmaker.match_new_items(
-                    new_items=new_flagged_for_cat,
-                    existing_items=list(pcm.items),
-                    current_scores=current_scores,
-                    pcm=pcm,
-                    n_groups_per_item=self.config.new_item_groups,
-                )
+                items_to_match = [x for x in candidate_items if x not in pcm.items]
+
+                if items_to_match:
+                    groups = self.matchmaker.match_new_items(
+                        new_items=items_to_match,
+                        existing_items=list(pcm.items),
+                        current_scores=current_scores,
+                        pcm=pcm,
+                        n_groups_per_item=self.config.new_item_groups,
+                    )
+                else:
+                    # All items already present: form re-ranking groups to strengthen graph connectivity
+                    groups = self.matchmaker.match_for_reranking(
+                        pcm=pcm,
+                        all_items=list(candidate_items),
+                        current_scores=current_scores,
+                        sample_pct=self.config.reranking_sample_pct,
+                        max_items=self.config.reranking_max_items_per_category,
+                    )
 
                 logger.info("Category '%s': Formed %d ranking groups.", cat_key, len(groups))
 
@@ -310,7 +356,7 @@ class BiasEngine:
                     added = pcm.add_listwise_ranking(ranked_group)
                     total_comparisons_added += added
 
-                # Save updated PCM
+                # Save updated PCM for this model
                 self.state_mgr.save_pcm(pcm)
 
                 # Step 5: Fit Bradley-Terry Model on Combined PCMs for this category

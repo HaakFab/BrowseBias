@@ -395,7 +395,7 @@ def test_prompt_evaluation(
 
     prov = create_provider_for_model(p_name, m_name)
     start_time = time.time()
-    raw_response = prov.complete(system_prompt, user_prompt)
+    raw_response = prov.complete(system_prompt, user_prompt, json_mode=True)
     elapsed_ms = round((time.time() - start_time) * 1000)
 
     # Clean code fences if any
@@ -417,9 +417,9 @@ def test_prompt_evaluation(
 
     return {
         "status": "ok",
-        "provider": provider_name,
-        "model": model_name,
-        "suggestion": suggestion_text,
+        "provider": p_name,
+        "model": m_name,
+        "suggestion": text,
         "elapsed_ms": elapsed_ms,
         "system_prompt": system_prompt,
         "raw_response": raw_response,

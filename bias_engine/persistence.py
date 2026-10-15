@@ -130,6 +130,21 @@ class StateManager:
                 return {k: float(v) for k, v in data.get("scores", {}).items()}
             except Exception as e:
                 logger.error("Failed to load BT scores from '%s': %s", path, e)
+        # Fallback to production lexicon.json if category bt_scores file does not exist yet
+        if os.path.exists(self.config.lexicon_file):
+            try:
+                with open(self.config.lexicon_file, "r", encoding="utf-8") as f:
+                    lex = json.load(f)
+                cat_scores = {}
+                for k, v in lex.items():
+                    if isinstance(v, dict):
+                        sc = v.get("scores", {}).get(category, 0.0)
+                        if sc > 0:
+                            cat_scores[k] = float(sc)
+                if cat_scores:
+                    return cat_scores
+            except Exception as e:
+                logger.debug("Failed to fallback load BT scores for '%s' from lexicon: %s", category, e)
         return {}
 
     # ── ScoreStore & Lexicon Output ──────────────────────────────────────
@@ -142,9 +157,22 @@ class StateManager:
         atomic_write_json(path, score_store.to_lexicon_dict())
 
     def load_score_store(self) -> ScoreStore:
-        """Construct ScoreStore and populate from persisted category BT scores."""
+        """Construct ScoreStore and populate from lexicon.json, overlaying any persisted category BT scores."""
         store = ScoreStore(self.framework)
+        if os.path.exists(self.config.lexicon_file):
+            try:
+                with open(self.config.lexicon_file, "r", encoding="utf-8") as f:
+                    lex = json.load(f)
+                store.load_from_dict(lex)
+                logger.info("Initialized ScoreStore with %d items from %s", store.size, self.config.lexicon_file)
+            except Exception as e:
+                logger.warning("Failed to initialize ScoreStore from lexicon file: %s", e)
+
+        # Overlay any freshly updated category BT score files from bt_scores/
         for cat in self.framework.categories:
-            scores = self.load_bt_scores(cat.key)
-            store.bulk_update_category_scores(cat.key, scores)
+            path = self.bt_scores_path(cat.key)
+            if os.path.exists(path):
+                scores = self.load_bt_scores(cat.key)
+                if scores:
+                    store.bulk_update_category_scores(cat.key, scores)
         return store
