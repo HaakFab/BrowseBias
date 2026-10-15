@@ -29,6 +29,7 @@ _data_backup/
 # Server Dynamic Datasets (Keep default template/seeds, ignore live collections)
 server/data/*.jsonl
 server/data/*.bak*
+server/data/archives/*
 server/data/engine_state/*
 !server/data/engine_state/.gitkeep
 

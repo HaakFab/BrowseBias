@@ -97,9 +97,10 @@ class BiasFramework:
 
 
 def _parse_category(raw: Dict) -> BiasCategory:
+    sk = raw.get("short_key") or raw.get("short_code") or raw.get("key", "unk")[:3]
     return BiasCategory(
         key=raw["key"],
-        short_key=raw["short_key"],
+        short_key=str(sk),
         name=raw["name"],
         definition=raw["definition"],
         mouseover_template=raw.get(

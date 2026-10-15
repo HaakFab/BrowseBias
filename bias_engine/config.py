@@ -111,9 +111,11 @@ class EngineConfig:
     # ── Identification ─────────────────────────────────────────────────
     identification_batch_size: int = 25
 
-    # ── Listwise ranking ───────────────────────────────────────────────
+    # ── Listwise ranking & Matchmaking ─────────────────────────────────
     listwise_group_size: int = 10
     new_item_groups: int = 3  # how many groups each new item participates in
+    matchmaking_strategy: str = "stratified"  # "stratified", "score_proximity", "random"
+    similar_score_jitter: float = 0.05  # Gaussian score jitter for proximity matchmaking
 
     # ── Scheduling ─────────────────────────────────────────────────────
     daily_schedule_hour: int = 3
@@ -130,8 +132,9 @@ class EngineConfig:
     bt_alpha: float = 1.5  # logistic mapping spread
     score_ema_beta: float = 0.7
 
-    # ── Framework ──────────────────────────────────────────────────────
-    framework_path: Optional[str] = None  # None → use default_framework.yaml
+    # ── Framework & Cohort ─────────────────────────────────────────────
+    framework_path: Optional[str] = None  # None → use data/framework.yaml or default_framework.yaml
+    active_version_tag: str = "Silurian"
 
     # ── Data paths ─────────────────────────────────────────────────────
     data_dir: str = ""
@@ -149,6 +152,25 @@ class EngineConfig:
             self.engine_state_dir = str(
                 Path(self.data_dir) / "engine_state"
             )
+        # Check for persisted framework.yaml in data_dir
+        if not self.framework_path:
+            custom_fw = os.path.join(self.data_dir, "framework.yaml")
+            if os.path.exists(custom_fw):
+                self.framework_path = custom_fw
+
+        # Load persisted config overrides if present
+        cfg_override_file = os.path.join(self.data_dir, "engine_config.json")
+        if os.path.exists(cfg_override_file):
+            try:
+                import json
+                with open(cfg_override_file, "r", encoding="utf-8") as f:
+                    overrides = json.load(f)
+                if isinstance(overrides, dict):
+                    for k, v in overrides.items():
+                        if hasattr(self, k) and not k.startswith("_"):
+                            setattr(self, k, v)
+            except Exception:
+                pass
 
     @property
     def suggestions_file(self) -> str:

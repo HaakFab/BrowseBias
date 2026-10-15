@@ -28,6 +28,14 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template_string, send_from_directory, send_file, Response
 from flask_cors import CORS
 
+from server.admin_settings import (
+    get_active_version_tag, get_version_status, switch_version_tag,
+    list_archives, load_categories, save_categories, load_prompts,
+    save_prompts, reset_prompts, test_prompt_evaluation,
+    get_engine_config_overrides, save_engine_config_overrides,
+    EARTH_EPOCHS, get_next_epoch
+)
+
 app = Flask(__name__)
 CORS(app)  # Allow cross-origin requests from the Chrome extension
 
@@ -254,11 +262,15 @@ def run_rating_job_thread(mode: str, provider: str = None, model: str = None):
             RATING_STATE["model"] = engine.primary_llm.model
             RATING_STATE["provider"] = provider or getattr(engine.primary_llm, "name", "")
 
-        res = engine.run_pipeline(
-            mode=mode,
-            force_all=(mode == "initial"),
-            progress_callback=on_rating_progress
-        )
+        if mode == "remerge":
+            res = engine.remerge_and_fit_all_categories()
+            res["elapsed_seconds"] = round((datetime.utcnow() - start_ts).total_seconds(), 2)
+        else:
+            res = engine.run_pipeline(
+                mode=mode,
+                force_all=(mode in ("initial", "cross_model_pass")),
+                progress_callback=on_rating_progress
+            )
 
         with RATING_STATE_LOCK:
             RATING_STATE["is_running"] = False
@@ -458,6 +470,13 @@ def dashboard():
     sorted_versions = sorted(version_counts.items(), key=lambda x: x[1], reverse=True)
     sorted_vtags = sorted(vtag_counts.items(), key=lambda x: x[1], reverse=True)
 
+    active_epoch = get_active_version_tag(DATA_DIR)
+    next_epoch = get_next_epoch(active_epoch)
+    engine_cfg = get_engine_config_overrides(DATA_DIR)
+    categories = load_categories(DATA_DIR)
+    prompts = load_prompts(DATA_DIR)
+    archives = list_archives(DATA_DIR)
+
     return render_template_string(DASHBOARD_HTML,
         upload_count=len(entries),
         total_suggestions=total_suggestions,
@@ -481,7 +500,14 @@ def dashboard():
         rating_state=rating_state,
         has_bias_engine=HAS_BIAS_ENGINE,
         pseudonym_counts=pseudonym_counts,
-        unique_pseudonyms=unique_pseudonyms
+        unique_pseudonyms=unique_pseudonyms,
+        active_version_tag=active_epoch,
+        next_suggested_epoch=next_epoch,
+        engine_config=engine_cfg,
+        all_epochs=EARTH_EPOCHS,
+        framework_categories=categories,
+        custom_prompts=prompts,
+        cohort_archives=archives
     )
 
 
@@ -1037,7 +1063,7 @@ DASHBOARD_HTML = """
     <div class="header">
         <div class="header-title-group">
             <h1>Autocomplete Bias</h1>
-            <span class="tag-badge">Research Server · v1.1.0 [Silurian]</span>
+            <span class="tag-badge">Research Server · v1.1.0 [{{ active_version_tag }}]</span>
         </div>
         <div class="header-right">
             <span class="badge badge-green">● Server Online</span>
@@ -1059,6 +1085,9 @@ DASHBOARD_HTML = """
         <button class="tab-btn" onclick="switchTab('tab-ratings', this)">
             ⭐ Bias Rating Engine
         </button>
+        <button class="tab-btn" onclick="switchTab('tab-settings', this)">
+            ⚙️ Settings &amp; Taxonomy
+        </button>
         <button class="tab-btn" onclick="switchTab('tab-data', this)">
             ⚡ Data &amp; Downloads
         </button>
@@ -1074,6 +1103,7 @@ DASHBOARD_HTML = """
         <div class="toolbar">
             <div class="toolbar-left">
                 <input type="text" id="search-filter" class="search-input" placeholder="🔍 Filter queries, suggestions, tag, version..." onkeyup="filterMainTable()">
+                <button id="btn-toggle-biased-admin" class="btn btn-secondary" onclick="toggleOnlyBiasedAdmin()" style="display:inline-flex; align-items:center; gap:6px;">🎯 Only Biased (&gt; 0)</button>
                 <select id="user-filter" class="select-input" onchange="filterByUserTag(this.value)">
                     <option value="">All Users / Tags</option>
                     {% for tag in unique_pseudonyms %}
@@ -1112,7 +1142,12 @@ DASHBOARD_HTML = """
                 <tbody>
                     {% if recent_entries %}
                         {% for entry in recent_entries %}
-                        <tr class="data-row" data-user="{{ entry.get('user_pseudonym', 'anonymous') }}">
+                        {% set max_b = namespace(val=0.0) %}
+                        {% for s in entry.get('suggestions', []) %}
+                            {% set sc = s.get('score', s.get('bias_score')) if s is mapping else None %}
+                            {% if sc and sc > max_b.val %}{% set max_b.val = sc %}{% endif %}
+                        {% endfor %}
+                        <tr class="data-row" data-user="{{ entry.get('user_pseudonym', 'anonymous') }}" data-max-bias="{{ max_b.val }}">
                             <td class="mono">{{ entry.get('timestamp', entry.get('receivedAt', ''))[:19] }}</td>
                             <td class="mono"><span class="badge badge-blue" style="font-weight: 600;">{{ entry.get('user_pseudonym', 'anonymous') }}</span></td>
                             <td><strong style="color: #fff;">{{ entry.get('query', '—') }}</strong></td>
@@ -1121,7 +1156,7 @@ DASHBOARD_HTML = """
                                     {% for s in entry.get('suggestions', []) %}
                                         {% set score = s.get('score', s.get('bias_score')) if s is mapping else None %}
                                         {% set s_text = s.get('text', '') if s is mapping else s|string %}
-                                        <div class="sugg-chip {% if score and score >= 0.35 %}sugg-red{% endif %}" title="{{ s_text }}{% if score is not none %} (score: {{ score }}){% endif %}">
+                                        <div class="sugg-chip {% if score and score >= 0.65 %}sugg-red{% elif score and score >= 0.35 %}sugg-yellow{% elif score and score > 0 %}sugg-blue{% endif %}" title="{{ s_text }}{% if score is not none %} (score: {{ score }}){% endif %}">
                                             <span class="sugg-num">#{{ loop.index }}</span>
                                             <span class="sugg-txt">{{ s_text }}</span>
                                         </div>
@@ -1432,6 +1467,53 @@ DASHBOARD_HTML = """
             </div>
         </div>
 
+        <!-- Pairwise Comparison & Matchmaking Parameters Card -->
+        <div class="section-box" style="margin-bottom: 16px;">
+            <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span>⚙️ <strong>Pairwise Comparison &amp; Matchmaking Parameters</strong></span>
+                    <span class="badge badge-gray" style="font-size: 10px;">Bradley-Terry Tuning</span>
+                </div>
+                <button class="btn btn-primary" onclick="saveEngineParameters()">💾 Save Parameters</button>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 12px;">
+                Configure listwise ranking group size ($k$), comparison rounds, matchmaking strategy, and Gaussian score jitter ($\sigma$) to control deterministic comparison ties.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px;">
+                <div style="background: var(--bg-base); padding: 10px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 4px;">
+                        Listwise Group Size (k)
+                    </label>
+                    <input type="number" id="param-group-size" min="3" max="10" value="{{ engine_config.listwise_group_size }}" class="search-input" style="width: 100%;">
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">Items per ranking prompt (default: 5)</div>
+                </div>
+                <div style="background: var(--bg-base); padding: 10px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 4px;">
+                        Rounds Per New Item
+                    </label>
+                    <input type="number" id="param-item-groups" min="1" max="10" value="{{ engine_config.new_item_groups }}" class="search-input" style="width: 100%;">
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">Number of groups each candidate joins (default: 3)</div>
+                </div>
+                <div style="background: var(--bg-base); padding: 10px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 4px;">
+                        Matchmaking Strategy
+                    </label>
+                    <select id="param-strategy" class="select-input" style="width: 100%;">
+                        <option value="stratified" {% if engine_config.matchmaking_strategy == 'stratified' %}selected{% endif %}>Stratified (Broad Coverage)</option>
+                        <option value="score_proximity" {% if engine_config.matchmaking_strategy == 'score_proximity' %}selected{% endif %}>Score Proximity (Near Neighbors)</option>
+                    </select>
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">Peer selection algorithm</div>
+                </div>
+                <div style="background: var(--bg-base); padding: 10px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 4px;">
+                        Similar Score Jitter (&sigma;)
+                    </label>
+                    <input type="number" id="param-jitter" step="0.01" min="0" max="0.5" value="{{ engine_config.similar_score_jitter }}" class="search-input" style="width: 100%;">
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">Gaussian noise on proximity matchmaking (default: 0.05)</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Action Cards Grid -->
         <div class="rating-card-grid">
             <div class="rating-action-card">
@@ -1441,7 +1523,7 @@ DASHBOARD_HTML = """
                         <span class="badge badge-green">Fast Path</span>
                     </div>
                     <div class="rating-action-desc" style="margin-top: 6px;">
-                        Ingests new raw suggestions, applies spaCy entity normalization (<code>[PERSON]</code>), identifies candidate bias across 6 dimensions via LLM, generates stratified comparison groups, executes listwise rankings, updates PCMs, and fits regularized Bradley-Terry models.
+                        Ingests new raw suggestions, applies spaCy entity normalization (<code>[PERSON]</code>), identifies candidate bias across 6 dimensions via LLM, generates comparison groups, executes listwise rankings, updates PCMs, and fits regularized Bradley-Terry models.
                     </div>
                 </div>
                 <div>
@@ -1464,6 +1546,40 @@ DASHBOARD_HTML = """
                 <div>
                     <button id="btn-run-initial" class="btn btn-secondary" style="width: 100%; justify-content: center; padding: 9px;" onclick="triggerRating('initial')">
                         🚀 Run Full Initial Rating Now
+                    </button>
+                </div>
+            </div>
+
+            <div class="rating-action-card">
+                <div>
+                    <div class="rating-action-title">
+                        <span>🔄 Multi-Model Matrix Pass</span>
+                        <span class="badge badge-blue">Run From 0</span>
+                    </div>
+                    <div class="rating-action-desc" style="margin-top: 6px;">
+                        Evaluates all candidate suggestions with the selected model, saving directly into its dedicated model PCM (<code>pcm_{category}_{model}.json</code>) without discarding other models' matrices. Then merges matrices for an ensemble scoreboard.
+                    </div>
+                </div>
+                <div>
+                    <button id="btn-run-cross-model" class="btn btn-blue" style="width: 100%; justify-content: center; padding: 9px;" onclick="triggerRating('cross_model_pass')">
+                        🔄 Run Multi-Model Pass (Preserve PCMs)
+                    </button>
+                </div>
+            </div>
+
+            <div class="rating-action-card">
+                <div>
+                    <div class="rating-action-title">
+                        <span>🧩 Merge PCMs &amp; Refit Scoreboard</span>
+                        <span class="badge badge-yellow">No LLM Calls</span>
+                    </div>
+                    <div class="rating-action-desc" style="margin-top: 6px;">
+                        Combines all saved model comparison matrices element-wise and refits the global Bradley-Terry score store instantly. Zero API tokens consumed.
+                    </div>
+                </div>
+                <div>
+                    <button id="btn-run-remerge" class="btn btn-secondary" style="width: 100%; justify-content: center; padding: 9px;" onclick="triggerRemerge()">
+                        🧩 Merge All Matrices &amp; Refit Scores
                     </button>
                 </div>
             </div>
@@ -1632,7 +1748,182 @@ DASHBOARD_HTML = """
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════ -->
-    <!-- TAB 5: DATA MANAGEMENT & DOWNLOADS                               -->
+    <!-- TAB 5: SETTINGS, TAXONOMY & COHORT VERSIONING                     -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-settings" class="tab-pane">
+        
+        <!-- Cohort Earth Epoch Versioning & Archiving -->
+        <div class="section-box" style="border: 1px solid rgba(188, 140, 255, 0.4); background: rgba(22, 27, 34, 0.95); margin-bottom: 16px;">
+            <div class="section-title">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px;">🌍 <strong>Cohort Dataset Versioning &amp; Archival</strong></span>
+                    <span class="tag-badge">Active: {{ active_version_tag }}</span>
+                </div>
+                <span class="badge badge-purple">On-Command Only</span>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 14px;">
+                Switching cohorts archives current research data (<code>uploads.jsonl</code>, <code>suggestions.jsonl</code>, <code>reports.jsonl</code>) into a compressed, timestamped <code>.zip</code> snapshot in <code>server/data/archives/</code>, then starts fresh with clean, 0-entry collection files under the new Earth Epoch. Existing pairwise comparison matrices and model scores are retained.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: end; background: var(--bg-base); padding: 14px; border-radius: 6px; border: 1px solid var(--border-default); margin-bottom: 14px;">
+                <div>
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">
+                        Next Chronological Epoch (Auto-Selected)
+                    </label>
+                    <input type="text" id="target-epoch-input" class="search-input" style="width: 100%; font-family: var(--font-mono); font-weight: 700; color: var(--accent-purple);" value="{{ next_suggested_epoch }}">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">
+                        Or Pick from 100+ Geological Epochs
+                    </label>
+                    <select id="epoch-picker-select" class="select-input" style="width: 100%; font-family: var(--font-mono);" onchange="document.getElementById('target-epoch-input').value = this.value">
+                        {% for ep in all_epochs %}
+                        <option value="{{ ep }}" {% if ep == next_suggested_epoch %}selected{% endif %}>{{ ep }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 8px; background: linear-gradient(135deg, #8957e5, #6e40c9); border-color: #8957e5;" onclick="switchCohortVersion()">
+                        🔒 Archive Current &amp; Advance Cohort
+                    </button>
+                </div>
+            </div>
+
+            <!-- Historical Archives Table -->
+            <div style="margin-top: 12px;">
+                <div style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 8px;">📦 Archived Cohort Datasets</div>
+                <div class="table-responsive" style="max-height: 220px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Archive File</th>
+                                <th>Epoch Tag</th>
+                                <th>Size</th>
+                                <th>Created</th>
+                                <th>Download</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if cohort_archives %}
+                                {% for arc in cohort_archives %}
+                                <tr>
+                                    <td class="mono" style="color: #fff;">{{ arc.filename }}</td>
+                                    <td><span class="badge badge-purple">{{ arc.epoch_tag }}</span></td>
+                                    <td class="mono">{{ (arc.size_bytes / 1024)|round(1) }} KB</td>
+                                    <td class="mono" style="color: var(--text-muted);">{{ arc.created_at[:19] }}</td>
+                                    <td>
+                                        <a href="/api/download/archive/{{ arc.filename }}" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;">
+                                            📥 Download .zip
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" style="text-align: center; padding: 14px; color: var(--text-muted);">No archived cohorts yet. The current cohort is <strong>{{ active_version_tag }}</strong>.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bias Categories Taxonomy Editor -->
+        <div class="section-box" style="margin-bottom: 16px;">
+            <div class="section-title">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px;">🏷️ <strong>Bias Categories &amp; Taxonomy (framework.yaml)</strong></span>
+                    <span class="badge badge-blue">Taxonomy</span>
+                </div>
+                <button class="btn btn-primary" onclick="saveCategories()">💾 Save Bias Categories</button>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 14px;">
+                Configure the active bias taxonomy categories, definitions, and short codes. Adjusting taxonomy updates <code>server/data/framework.yaml</code> without resetting existing empirical data.
+            </p>
+            <div id="categories-container" style="display: flex; flex-direction: column; gap: 10px;">
+                {% for cat in framework_categories.categories %}
+                <div class="category-config-row" data-key="{{ cat.key }}" style="background: var(--bg-base); padding: 12px; border-radius: 6px; border: 1px solid var(--border-default);">
+                    <div style="display: grid; grid-template-columns: 140px 1fr 100px 90px; gap: 10px; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <label style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Key</label>
+                            <input type="text" class="search-input mono" value="{{ cat.key }}" disabled style="width: 100%; opacity: 0.8;">
+                        </div>
+                        <div>
+                            <label style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Display Name</label>
+                            <input type="text" class="search-input cat-name-input" value="{{ cat.name }}" style="width: 100%;">
+                        </div>
+                        <div>
+                            <label style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Short Code</label>
+                            <input type="text" class="search-input mono cat-short-input" value="{{ cat.short_code }}" style="width: 100%; text-transform: uppercase;">
+                        </div>
+                        <div style="text-align: center;">
+                            <label style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; display: block;">Enabled</label>
+                            <input type="checkbox" class="cat-enabled-check" {% if cat.enabled %}checked{% endif %} style="transform: scale(1.2); margin-top: 6px; cursor: pointer;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">Definition (Used by LLM Prompts)</label>
+                        <textarea class="search-input cat-def-input" style="width: 100%; height: 50px; font-size: 11.5px; resize: vertical; margin-top: 4px;">{{ cat.definition }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Prompt Templates Editor & Interactive Tester -->
+        <div class="section-box" style="margin-bottom: 16px;">
+            <div class="section-title">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px;">✍️ <strong>Prompt Engineering &amp; Tuning (prompts.json)</strong></span>
+                    <span class="badge badge-yellow">No Tool Version Change</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" onclick="resetPrompts()">↺ Reset to Defaults</button>
+                    <button class="btn btn-primary" onclick="savePrompts()">💾 Save Prompt Templates</button>
+                </div>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 14px;">
+                Fine-tune the prompts used during Stage 2 (Candidate Identification) and Stage 4 (Listwise Ranking). Prompts are saved in <code>server/data/prompts.json</code>.
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+                <div>
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">
+                        Stage 2: Identification Prompt
+                    </label>
+                    <textarea id="prompt-ident-input" class="search-input mono" style="width: 100%; height: 160px; font-size: 11px; resize: vertical;">{{ custom_prompts.identification_prompt }}</textarea>
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">
+                        Variables: <code>{categories_def}</code>, <code>{keys_schema}</code>, <code>{example_format}</code>
+                    </div>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">
+                        Stage 4: Listwise Ranking Prompt
+                    </label>
+                    <textarea id="prompt-quant-input" class="search-input mono" style="width: 100%; height: 160px; font-size: 11px; resize: vertical;">{{ custom_prompts.quantification_prompt }}</textarea>
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px;">
+                        Variables: <code>{category_name}</code>, <code>{category_definition}</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Prompt Playground -->
+            <div style="background: var(--bg-base); padding: 14px; border-radius: 6px; border: 1px solid var(--border-default);">
+                <div style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 8px;">
+                    🧪 Interactive Prompt Evaluation Playground
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                    <input type="text" id="prompt-test-text" class="search-input" style="flex: 1; min-width: 250px;" value="[PERSON] fraud" placeholder="Enter suggestion text to test...">
+                    <button id="btn-run-prompt-test" class="btn btn-blue" onclick="runPromptTest()">
+                        🧪 Test Prompt with LLM
+                    </button>
+                </div>
+                <pre id="prompt-test-output" style="background: #090d13; border: 1px solid var(--border-default); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; color: #a5d6ff; max-height: 180px; overflow-y: auto; white-space: pre-wrap;">Ready to test. Click 'Test Prompt with LLM' above.</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 6: DATA MANAGEMENT & DOWNLOADS                               -->
     <!-- ════════════════════════════════════════════════════════════════ -->
     <div id="tab-data" class="tab-pane">
         <div id="alert-box" class="alert-box"></div>
@@ -1761,6 +2052,25 @@ function switchTab(tabId, btnEl) {
     btnEl.classList.add('active');
 }
 
+// Biased Only Toggle (Admin Console)
+let onlyBiasedAdmin = false;
+function toggleOnlyBiasedAdmin() {
+    onlyBiasedAdmin = !onlyBiasedAdmin;
+    const btn = document.getElementById('btn-toggle-biased-admin');
+    if (btn) {
+        if (onlyBiasedAdmin) {
+            btn.className = 'btn btn-primary';
+            btn.style.borderColor = 'var(--accent-green)';
+            btn.textContent = '🎯 Only Biased (> 0) [ACTIVE]';
+        } else {
+            btn.className = 'btn btn-secondary';
+            btn.style.borderColor = '';
+            btn.textContent = '🎯 Only Biased (> 0)';
+        }
+    }
+    filterMainTable();
+}
+
 // Main Table Search Filter
 function filterMainTable() {
     const filter = (document.getElementById('search-filter').value || '').toLowerCase();
@@ -1770,9 +2080,11 @@ function filterMainTable() {
     rows.forEach(row => {
         const text = row.innerText.toLowerCase();
         const user = row.getAttribute('data-user') || '';
+        const maxBias = parseFloat(row.getAttribute('data-max-bias') || '0.0');
         const matchText = !filter || text.includes(filter);
         const matchUser = !userFilter || user === userFilter;
-        const show = matchText && matchUser;
+        const matchBiased = !onlyBiasedAdmin || (maxBias > 0.0);
+        const show = matchText && matchUser && matchBiased;
         row.style.display = show ? '' : 'none';
         if (show) visible++;
     });
@@ -2118,11 +2430,15 @@ function getSelectedModel() {
 // ─── Rating Engine Trigger & Live Polling ───────────────────────────
 let pollInterval = null;
 
+function getRatingActionButtons() {
+    return ['btn-run-incremental', 'btn-run-initial', 'btn-run-cross-model', 'btn-run-remerge']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+}
+
 async function triggerRating(mode) {
-    const btnInc = document.getElementById('btn-run-incremental');
-    const btnInit = document.getElementById('btn-run-initial');
-    btnInc.disabled = true;
-    btnInit.disabled = true;
+    const btns = getRatingActionButtons();
+    btns.forEach(b => b.disabled = true);
 
     try {
         const res = await fetch('/api/ratings/start', {
@@ -2139,13 +2455,184 @@ async function triggerRating(mode) {
             startPollingRating();
         } else {
             alert('Rating start failed: ' + (data.error || res.statusText));
-            btnInc.disabled = false;
-            btnInit.disabled = false;
+            btns.forEach(b => b.disabled = false);
         }
     } catch (e) {
         alert('Request failed: ' + e.message);
-        btnInc.disabled = false;
-        btnInit.disabled = false;
+        btns.forEach(b => b.disabled = false);
+    }
+}
+
+async function triggerRemerge() {
+    if (!confirm('Re-merge all stored model PCMs and refit Bradley-Terry scores across all categories? Zero LLM tokens will be consumed.')) return;
+    const btns = getRatingActionButtons();
+    btns.forEach(b => b.disabled = true);
+
+    try {
+        const res = await fetch('/api/ratings/remerge', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            startPollingRating();
+        } else {
+            alert('Remerge failed to start: ' + (data.error || res.statusText));
+            btns.forEach(b => b.disabled = false);
+        }
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+        btns.forEach(b => b.disabled = false);
+    }
+}
+
+async function saveEngineParameters() {
+    const k = parseInt(document.getElementById('param-group-size').value, 10);
+    const rounds = parseInt(document.getElementById('param-item-groups').value, 10);
+    const strategy = document.getElementById('param-strategy').value;
+    const jitter = parseFloat(document.getElementById('param-jitter').value);
+
+    try {
+        const res = await fetch('/api/engine-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                listwise_group_size: k,
+                new_item_groups: rounds,
+                matchmaking_strategy: strategy,
+                similar_score_jitter: jitter
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+            alert('✅ Pairwise comparison & matchmaking parameters saved successfully!');
+        } else {
+            alert('❌ Failed to save parameters: ' + (data.message || res.statusText));
+        }
+    } catch (e) {
+        alert('❌ Error: ' + e.message);
+    }
+}
+
+async function switchCohortVersion() {
+    const targetInput = document.getElementById('target-epoch-input');
+    const newTag = (targetInput ? targetInput.value : '').trim();
+    if (!newTag) {
+        alert('Please enter or select a valid epoch version tag.');
+        return;
+    }
+    const currentTag = '{{ active_version_tag }}';
+    if (!confirm(`Are you sure you want to archive current data under epoch '${currentTag}' and advance to new epoch '${newTag}'?\n\nThis will zip all active uploads, suggestions, and reports into archives/ and start fresh with empty collection files.`)) {
+        return;
+    }
+    try {
+        const res = await fetch('/api/version/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version_tag: newTag })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+            alert(`✅ Successfully switched to '${data.active_version_tag}'!\n\nArchive created: ${data.archive_filename} (${(data.archive_size_bytes/1024).toFixed(1)} KB).\nPage will now refresh.`);
+            window.location.reload();
+        } else {
+            alert('❌ Version switch failed: ' + (data.message || res.statusText));
+        }
+    } catch (e) {
+        alert('❌ Error: ' + e.message);
+    }
+}
+
+async function saveCategories() {
+    const rows = document.querySelectorAll('.category-config-row');
+    const categories = [];
+    rows.forEach(r => {
+        const key = r.getAttribute('data-key');
+        const name = r.querySelector('.cat-name-input').value;
+        const short_code = r.querySelector('.cat-short-input').value;
+        const enabled = r.querySelector('.cat-enabled-check').checked;
+        const definition = r.querySelector('.cat-def-input').value;
+        categories.push({ key, name, short_code, enabled, definition });
+    });
+    try {
+        const res = await fetch('/api/framework', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categories })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+            alert('✅ Bias categories taxonomy saved to framework.yaml successfully!');
+        } else {
+            alert('❌ Failed to save categories: ' + (data.message || res.statusText));
+        }
+    } catch (e) {
+        alert('❌ Error: ' + e.message);
+    }
+}
+
+async function savePrompts() {
+    const ident = document.getElementById('prompt-ident-input').value;
+    const quant = document.getElementById('prompt-quant-input').value;
+    try {
+        const res = await fetch('/api/prompts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identification_prompt: ident, quantification_prompt: quant })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+            alert('✅ Custom prompt templates saved to prompts.json successfully!');
+        } else {
+            alert('❌ Failed to save prompts: ' + (data.message || res.statusText));
+        }
+    } catch (e) {
+        alert('❌ Error: ' + e.message);
+    }
+}
+
+async function resetPrompts() {
+    if (!confirm('Reset prompts to standard system defaults?')) return;
+    try {
+        const res = await fetch('/api/prompts/reset', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.status === 'ok') {
+            document.getElementById('prompt-ident-input').value = data.prompts.identification_prompt;
+            document.getElementById('prompt-quant-input').value = data.prompts.quantification_prompt;
+            alert('✅ Prompts reset to default template successfully!');
+        } else {
+            alert('❌ Failed to reset prompts: ' + (data.message || res.statusText));
+        }
+    } catch (e) {
+        alert('❌ Error: ' + e.message);
+    }
+}
+
+async function runPromptTest() {
+    const text = (document.getElementById('prompt-test-text').value || '').trim();
+    const btn = document.getElementById('btn-run-prompt-test');
+    const out = document.getElementById('prompt-test-output');
+    if (!text) {
+        alert('Please enter a sample suggestion text to test.');
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = '⏳ Evaluating...';
+    out.textContent = 'Contacting LLM model and running multi-category prompt identification...';
+    try {
+        const res = await fetch('/api/prompts/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: text,
+                provider: getSelectedProvider(),
+                model: getSelectedModel()
+            })
+        });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+        out.textContent = '❌ Error testing prompt: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🧪 Test Prompt with LLM';
     }
 }
 
@@ -2174,14 +2661,15 @@ async function pollRatingStatus() {
             else barEl.classList.remove('active-stripes');
         }
 
+        const btns = getRatingActionButtons();
         if (state.is_running) {
             titleEl.textContent = `⏳ Rating Engine Running (${state.mode.toUpperCase()})`;
             subtitleEl.textContent = state.message;
+            btns.forEach(b => b.disabled = true);
         } else {
             titleEl.textContent = state.stage === 'completed' ? `✅ Rating Completed (${state.mode.toUpperCase()})` : (state.stage === 'failed' ? '❌ Rating Failed' : '⭐ Rating Engine Status: Idle');
             subtitleEl.textContent = state.message;
-            document.getElementById('btn-run-incremental').disabled = false;
-            document.getElementById('btn-run-initial').disabled = false;
+            btns.forEach(b => b.disabled = false);
             if (!state.is_running && pollInterval) {
                 clearInterval(pollInterval);
                 pollInterval = null;
@@ -2405,7 +2893,8 @@ def start_rating_job():
 
     data = request.get_json() or {}
     mode = data.get("type", data.get("mode", "incremental")).lower()
-    if mode not in ["initial", "incremental"]:
+    valid_modes = ["initial", "incremental", "cross_model_pass", "remerge"]
+    if mode not in valid_modes:
         mode = "incremental"
 
     provider = data.get("provider")
@@ -2449,6 +2938,152 @@ def get_rating_history():
         "total": len(history),
         "history": history
     })
+
+
+@app.route('/api/ratings/remerge', methods=['POST'])
+@app.route('/ratings/remerge', methods=['POST'])
+@require_admin
+def api_ratings_remerge():
+    """Combine all saved model PCMs across all categories on disk and re-fit Bradley-Terry scores."""
+    with RATING_STATE_LOCK:
+        if RATING_STATE["is_running"]:
+            return jsonify({
+                "status": "busy",
+                "error": "A rating job is already running in background.",
+                "job": RATING_STATE
+            }), 409
+
+    thread = threading.Thread(target=run_rating_job_thread, args=("remerge", None, None), daemon=True)
+    thread.start()
+
+    with RATING_STATE_LOCK:
+        current_job = dict(RATING_STATE)
+
+    return jsonify({
+        "status": "started",
+        "mode": "remerge",
+        "message": "Started Bradley-Terry PCM merge and refit in background.",
+        "job": current_job
+    }), 200
+
+
+@app.route('/api/version/status', methods=['GET'])
+@app.route('/version/status', methods=['GET'])
+@require_admin
+def api_version_status():
+    """Get active version tag, next suggested earth epoch, and archive list."""
+    return jsonify(get_version_status(DATA_DIR))
+
+
+@app.route('/api/version/switch', methods=['POST'])
+@app.route('/version/switch', methods=['POST'])
+@require_admin
+def api_version_switch():
+    """Archive current dataset into a .zip snapshot and initialize a clean dataset for the new epoch."""
+    data = request.get_json() or {}
+    new_tag = (data.get('version_tag') or data.get('tag') or '').strip()
+    if not new_tag:
+        return jsonify({"status": "error", "message": "Target version tag cannot be empty."}), 400
+    try:
+        res = switch_version_tag(DATA_DIR, new_tag)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/download/archive/<filename>', methods=['GET'])
+@app.route('/download/archive/<filename>', methods=['GET'])
+@require_admin
+def api_download_archive(filename):
+    """Download a specific archived cohort dataset .zip file."""
+    archive_dir = os.path.join(DATA_DIR, "archives")
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(archive_dir, safe_name)
+    if not os.path.isfile(file_path):
+        return jsonify({"error": f"Archive {safe_name} not found."}), 404
+    return send_file(file_path, as_attachment=True, download_name=safe_name)
+
+
+@app.route('/api/framework', methods=['GET', 'POST'])
+@app.route('/framework', methods=['GET', 'POST'])
+@require_admin
+def api_framework():
+    """Load or update bias categories taxonomy in framework.yaml."""
+    if request.method == 'GET':
+        return jsonify(load_categories(DATA_DIR))
+    data = request.get_json() or {}
+    categories_data = data.get('categories')
+    if not categories_data or not isinstance(categories_data, list):
+        return jsonify({"status": "error", "message": "categories list is required"}), 400
+    try:
+        saved = save_categories(DATA_DIR, categories_data)
+        return jsonify({"status": "ok", "categories": saved})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/prompts', methods=['GET', 'POST'])
+@app.route('/prompts', methods=['GET', 'POST'])
+@require_admin
+def api_prompts():
+    """Load or update custom prompt templates in prompts.json."""
+    if request.method == 'GET':
+        return jsonify(load_prompts(DATA_DIR))
+    data = request.get_json() or {}
+    ident = data.get('identification_prompt')
+    quant = data.get('quantification_prompt')
+    if not ident or not quant:
+        return jsonify({"status": "error", "message": "Both identification_prompt and quantification_prompt required"}), 400
+    try:
+        saved = save_prompts(DATA_DIR, ident, quant)
+        return jsonify({"status": "ok", "prompts": saved})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/prompts/reset', methods=['POST'])
+@app.route('/prompts/reset', methods=['POST'])
+@require_admin
+def api_prompts_reset():
+    """Reset prompts to default templates."""
+    try:
+        res = reset_prompts(DATA_DIR)
+        return jsonify({"status": "ok", "prompts": res})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/prompts/test', methods=['POST'])
+@app.route('/prompts/test', methods=['POST'])
+@require_admin
+def api_prompts_test():
+    """Interactive playground to test prompt evaluation on a sample suggestion."""
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({"status": "error", "message": "Test text is required"}), 400
+    provider = data.get('provider')
+    model = data.get('model')
+    try:
+        res = test_prompt_evaluation(DATA_DIR, text, provider=provider, model=model)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/engine-config', methods=['GET', 'POST'])
+@app.route('/engine-config', methods=['GET', 'POST'])
+@require_admin
+def api_engine_config():
+    """Load or update engine matchmaking and pairwise parameters in engine_config.json."""
+    if request.method == 'GET':
+        return jsonify(get_engine_config_overrides(DATA_DIR))
+    data = request.get_json() or {}
+    try:
+        saved = save_engine_config_overrides(DATA_DIR, data)
+        return jsonify(saved)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/upload', methods=['POST'])

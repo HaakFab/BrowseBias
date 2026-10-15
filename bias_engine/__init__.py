@@ -78,7 +78,11 @@ class BiasEngine:
             regularization=self.config.bt_regularization,
             alpha=self.config.bt_alpha,
         )
-        self.matchmaker = Matchmaker(group_size=self.config.listwise_group_size)
+        self.matchmaker = Matchmaker(
+            group_size=self.config.listwise_group_size,
+            strategy=self.config.matchmaking_strategy,
+            similar_score_jitter=self.config.similar_score_jitter,
+        )
 
         # 4. State & Persistence
         self.state_mgr = StateManager(self.config, self.framework)
@@ -188,7 +192,7 @@ class BiasEngine:
             for _, _, norm_text in normalized_records:
                 if norm_text and norm_text not in seen:
                     seen.add(norm_text)
-                    if mode == "initial" or force_all or self.score_store.get_record(norm_text) is None:
+                    if mode in ("initial", "cross_model_pass") or force_all or self.score_store.get_record(norm_text) is None:
                         unique_normalized.append(norm_text)
 
             logger.info(
@@ -481,6 +485,31 @@ class BiasEngine:
             ),
             "lexicon_file": self.config.lexicon_file,
         }
+
+    def remerge_and_fit_all_categories(self) -> Dict[str, Any]:
+        """Combine all saved model PCMs across all categories on disk and re-fit Bradley-Terry scores."""
+        summary = {}
+        for category in self.framework.categories:
+            cat_key = category.key
+            all_pcms = self.state_mgr.load_all_pcms_for_category(cat_key)
+            if not all_pcms:
+                continue
+            combined_pcm = PairwiseMatrix.combine(all_pcms, category=cat_key)
+            current_scores = self.state_mgr.load_bt_scores(cat_key)
+            new_scores = self.scorer.fit(
+                combined_pcm,
+                prev_scores=current_scores,
+                ema_beta=self.config.score_ema_beta,
+            )
+            self.state_mgr.save_bt_scores(cat_key, new_scores)
+            self.score_store.bulk_update_category_scores(cat_key, new_scores)
+            summary[cat_key] = {
+                "models": [p.model for p in all_pcms],
+                "total_comparisons": sum(p.get_comparison_count(x) for p in all_pcms for x in p.items) // 2,
+                "scored_items": len(new_scores)
+            }
+        self.state_mgr.save_lexicon(self.score_store)
+        return summary
 
     def start_scheduler(self):
         """Start the background APScheduler with missed-task recovery."""

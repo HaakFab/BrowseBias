@@ -1,0 +1,7 @@
+{
+  "listwise_group_size": 5,
+  "new_item_groups": 3,
+  "matchmaking_strategy": "stratified",
+  "similar_score_jitter": 0.05,
+  "bt_regularization": 0.01
+}

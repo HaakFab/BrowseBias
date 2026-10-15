@@ -531,14 +531,17 @@
         <div class="toolbar">
             <div class="toolbar-group">
                 <input type="text" id="filter-search" class="search-input" placeholder="🔍 Search query, suggestion, user tag..." oninput="applySearchFilters()">
+                <button id="btn-toggle-biased-viewer" class="btn btn-secondary" onclick="toggleOnlyBiasedViewer()" style="display:inline-flex; align-items:center; gap:6px;">🎯 Only Biased (&gt; 0)</button>
                 <select id="filter-user" class="select-input" onchange="applySearchFilters()">
                     <option value="">All Cohort Tags</option>
                 </select>
                 <select id="filter-bias" class="select-input" onchange="applySearchFilters()">
                     <option value="all">All Bias Levels</option>
-                    <option value="biased">Biased Only (&ge; 0.35)</option>
-                    <option value="high">High Bias Only (&ge; 0.65)</option>
-                    <option value="neutral">Neutral Only (&lt; 0.35)</option>
+                    <option value="biased">Biased Only (&gt; 0.00)</option>
+                    <option value="high">High Bias (&ge; 0.65)</option>
+                    <option value="moderate">Moderate Bias (0.35 &ndash; 0.64)</option>
+                    <option value="low">Low Bias (0.01 &ndash; 0.34)</option>
+                    <option value="neutral">Neutral Only (0.00)</option>
                 </select>
                 <select id="filter-domain" class="select-input" onchange="applySearchFilters()">
                     <option value="">All Domains</option>
@@ -636,11 +639,14 @@
         <div class="toolbar">
             <div class="toolbar-group">
                 <input type="text" id="filter-cat-search" class="search-input" placeholder="🔍 Search template, keyword, or note..." oninput="applyCategoryFilters()">
+                <button id="btn-toggle-biased-cat" class="btn btn-secondary" onclick="toggleOnlyBiasedCat()" style="display:inline-flex; align-items:center; gap:6px;">🎯 Only Biased (&gt; 0)</button>
                 <select id="filter-cat-severity" class="select-input" onchange="applyCategoryFilters()">
                     <option value="all">All Severities</option>
+                    <option value="biased">Biased Only (&gt; 0.00)</option>
                     <option value="high">High (&ge; 0.65)</option>
-                    <option value="moderate">Moderate (0.35 – 0.65)</option>
-                    <option value="low">Low (&lt; 0.35)</option>
+                    <option value="moderate">Moderate (0.35 &ndash; 0.64)</option>
+                    <option value="low">Low (0.01 &ndash; 0.34)</option>
+                    <option value="neutral">Neutral (0.00)</option>
                 </select>
             </div>
             <div class="toolbar-group">
@@ -1157,6 +1163,46 @@
             applySearchFilters();
         }
 
+        let onlyBiasedViewer = false;
+        function toggleOnlyBiasedViewer() {
+            onlyBiasedViewer = !onlyBiasedViewer;
+            const btn = document.getElementById('btn-toggle-biased-viewer');
+            if (btn) {
+                if (onlyBiasedViewer) {
+                    btn.className = 'btn btn-primary';
+                    btn.style.borderColor = '#10b981';
+                    btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                    btn.textContent = '🎯 Only Biased (> 0) [ACTIVE]';
+                } else {
+                    btn.className = 'btn btn-secondary';
+                    btn.style.borderColor = '';
+                    btn.style.background = '';
+                    btn.textContent = '🎯 Only Biased (> 0)';
+                }
+            }
+            applySearchFilters();
+        }
+
+        let onlyBiasedCat = false;
+        function toggleOnlyBiasedCat() {
+            onlyBiasedCat = !onlyBiasedCat;
+            const btn = document.getElementById('btn-toggle-biased-cat');
+            if (btn) {
+                if (onlyBiasedCat) {
+                    btn.className = 'btn btn-primary';
+                    btn.style.borderColor = '#10b981';
+                    btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                    btn.textContent = '🎯 Only Biased (> 0) [ACTIVE]';
+                } else {
+                    btn.className = 'btn btn-secondary';
+                    btn.style.borderColor = '';
+                    btn.style.background = '';
+                    btn.textContent = '🎯 Only Biased (> 0)';
+                }
+            }
+            applyCategoryFilters();
+        }
+
         function applySearchFilters() {
             const queryFilter = (document.getElementById('filter-search').value || '').toLowerCase();
             const userFilter = document.getElementById('filter-user').value;
@@ -1172,11 +1218,16 @@
                 const matchUser = !userFilter || e.user_pseudonym === userFilter;
                 const matchDomain = !domainFilter || e.googleTld === domainFilter;
 
-                let matchBias = true;
                 const maxScore = Math.max(0, ...(e.suggestions || []).map(s => (s && typeof s.score === 'number' ? s.score : 0)));
-                if (biasFilter === 'biased') matchBias = maxScore >= 0.35;
+
+                if (onlyBiasedViewer && maxScore <= 0) return false;
+
+                let matchBias = true;
+                if (biasFilter === 'biased') matchBias = maxScore > 0;
                 else if (biasFilter === 'high') matchBias = maxScore >= 0.65;
-                else if (biasFilter === 'neutral') matchBias = maxScore < 0.35;
+                else if (biasFilter === 'moderate') matchBias = maxScore >= 0.35 && maxScore < 0.65;
+                else if (biasFilter === 'low') matchBias = maxScore > 0.00 && maxScore < 0.35;
+                else if (biasFilter === 'neutral') matchBias = maxScore <= 0;
 
                 return matchSearch && matchUser && matchDomain && matchBias;
             });
@@ -1321,6 +1372,8 @@
             const sevFilter = document.getElementById('filter-cat-severity')?.value || 'all';
 
             filteredLexicon = rawLexicon.filter(item => {
+                if (onlyBiasedCat && item.score <= 0.00) return false;
+
                 // Category match
                 if (currentCategoryFilter !== 'all') {
                     const matchCat = (item.categories || []).includes(currentCategoryFilter) || item.primary_category === currentCategoryFilter;
@@ -1337,7 +1390,9 @@
                 // Severity
                 if (sevFilter === 'high' && item.score < 0.65) return false;
                 if (sevFilter === 'moderate' && (item.score < 0.35 || item.score >= 0.65)) return false;
-                if (sevFilter === 'low' && item.score >= 0.35) return false;
+                if (sevFilter === 'low' && (item.score <= 0.00 || item.score >= 0.35)) return false;
+                if (sevFilter === 'neutral' && item.score > 0.00) return false;
+                if (sevFilter === 'biased' && item.score <= 0.00) return false;
 
                 return true;
             });

@@ -18,9 +18,17 @@ class Matchmaker:
     Constructs informative listwise comparison groups for new and existing items.
     """
 
-    def __init__(self, group_size: int = 10, rng: Optional[random.Random] = None):
+    def __init__(
+        self,
+        group_size: int = 10,
+        rng: Optional[random.Random] = None,
+        strategy: str = "stratified",
+        similar_score_jitter: float = 0.05,
+    ):
         self.group_size = group_size
         self.rng = rng or random.Random()
+        self.strategy = strategy
+        self.similar_score_jitter = similar_score_jitter
 
     def match_new_items(
         self,
@@ -31,7 +39,7 @@ class Matchmaker:
         n_groups_per_item: int = 3,
     ) -> List[List[str]]:
         """
-        Form groups for newly flagged items using stratified anchor sampling.
+        Form groups for newly flagged items using stratified anchor sampling or score-proximity with jitter.
 
         Args:
             new_items: Newly flagged suggestion strings.
@@ -78,41 +86,77 @@ class Matchmaker:
         for new_item in new_items:
             used_anchors_for_item: Set[str] = set()
 
-            for _ in range(n_groups_per_item):
-                anchors: List[str] = []
-
-                # Select from each stratum (preferring items with fewer comparisons)
-                for stratum in (low_stratum, mid_stratum, high_stratum):
-                    cands = [x for x in stratum if x != new_item and x not in used_anchors_for_item]
-                    if not cands:
-                        cands = [x for x in stratum if x != new_item]
+            if self.strategy == "score_proximity":
+                target_score = current_scores.get(new_item, 0.5)
+                for _ in range(n_groups_per_item):
+                    anchors: List[str] = []
+                    cands = [x for x in sorted_existing if x != new_item and x not in used_anchors_for_item]
+                    if len(cands) < needed_anchors:
+                        cands = [x for x in sorted_existing if x != new_item]
 
                     if cands:
-                        # Inverse-comparison weighting
-                        weights = [1.0 / (pcm.get_comparison_count(x) + 1.0) for x in cands]
-                        total_w = sum(weights)
-                        probs = [w / total_w for w in weights] if total_w > 0 else None
+                        jittered_weights = []
+                        for x in cands:
+                            s = current_scores.get(x, 0.5)
+                            jitter = self.rng.gauss(0, self.similar_score_jitter)
+                            dist = abs(s - target_score + jitter)
+                            comp_count = pcm.get_comparison_count(x)
+                            w = (1.0 / (dist + 0.05)) * (1.0 / (comp_count + 1.0))
+                            jittered_weights.append(w)
 
-                        selected = self.rng.choices(
-                            cands, weights=probs, k=min(per_stratum, len(cands))
-                        )
+                        total_w = sum(jittered_weights)
+                        probs = [w / total_w for w in jittered_weights] if total_w > 0 else None
+                        selected = self.rng.choices(cands, weights=probs, k=min(needed_anchors, len(cands)))
                         for sel in selected:
                             if sel not in anchors and len(anchors) < needed_anchors:
                                 anchors.append(sel)
                                 used_anchors_for_item.add(sel)
 
-                # Fill remainder if any
-                remaining_cands = [
-                    x for x in sorted_existing if x != new_item and x not in anchors
-                ]
-                while len(anchors) < needed_anchors and remaining_cands:
-                    sel = self.rng.choice(remaining_cands)
-                    anchors.append(sel)
-                    remaining_cands.remove(sel)
+                    remaining_cands = [x for x in sorted_existing if x != new_item and x not in anchors]
+                    while len(anchors) < needed_anchors and remaining_cands:
+                        sel = self.rng.choice(remaining_cands)
+                        anchors.append(sel)
+                        remaining_cands.remove(sel)
 
-                group = [new_item] + anchors
-                if len(group) >= 2:
-                    groups.append(group)
+                    group = [new_item] + anchors
+                    if len(group) >= 2:
+                        groups.append(group)
+            else:
+                # Default: Stratified anchor selection
+                for _ in range(n_groups_per_item):
+                    anchors: List[str] = []
+
+                    # Select from each stratum (preferring items with fewer comparisons)
+                    for stratum in (low_stratum, mid_stratum, high_stratum):
+                        cands = [x for x in stratum if x != new_item and x not in used_anchors_for_item]
+                        if not cands:
+                            cands = [x for x in stratum if x != new_item]
+
+                        if cands:
+                            weights = [1.0 / (pcm.get_comparison_count(x) + 1.0) for x in cands]
+                            total_w = sum(weights)
+                            probs = [w / total_w for w in weights] if total_w > 0 else None
+
+                            selected = self.rng.choices(
+                                cands, weights=probs, k=min(per_stratum, len(cands))
+                            )
+                            for sel in selected:
+                                if sel not in anchors and len(anchors) < needed_anchors:
+                                    anchors.append(sel)
+                                    used_anchors_for_item.add(sel)
+
+                    # Fill remainder if any
+                    remaining_cands = [
+                        x for x in sorted_existing if x != new_item and x not in anchors
+                    ]
+                    while len(anchors) < needed_anchors and remaining_cands:
+                        sel = self.rng.choice(remaining_cands)
+                        anchors.append(sel)
+                        remaining_cands.remove(sel)
+
+                    group = [new_item] + anchors
+                    if len(group) >= 2:
+                        groups.append(group)
 
         return groups
 
