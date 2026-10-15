@@ -457,8 +457,13 @@
             <h1>BrowseBias Dataset Viewer</h1>
             <span class="tag-badge">v1.1.0 Silurian</span>
             <span class="badge badge-purple">Research Edition</span>
+            <span id="live-server-badge" class="badge badge-green" style="display: none; align-items: center; gap: 5px;">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 6px #10b981;"></span>
+                <span id="live-server-status-text">Live Server Connected</span>
+            </span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="btn-sync-server" class="btn btn-primary" onclick="loadLiveServerData()" style="display: none; background: linear-gradient(135deg, #10b981, #059669); border-color: #059669;">🔄 Sync Server</button>
             <button class="btn btn-secondary" onclick="exportCurrentViewCSV()">📥 Export CSV</button>
             <button class="btn btn-secondary" onclick="exportCurrentViewJSON()">📥 Export JSON</button>
         </div>
@@ -466,14 +471,15 @@
 
     <!-- Drag & Drop Zone -->
     <div class="dropzone-container" id="dropzone">
-        <div class="dropzone-title">📂 Load Research Datasets (Drag &amp; Drop or Select)</div>
-        <div class="dropzone-desc">
+        <div class="dropzone-title">📂 Research Dataset Explorer</div>
+        <div class="dropzone-desc" id="dropzone-desc">
             Supports <code>suggestions.jsonl</code>, <code>uploads.jsonl</code>, <code>reports.jsonl</code>, and <code>lexicon.json</code>.
-            Extract from <code>browsebias_dataset_bundle.zip</code> or load the built-in sample.
+            Drag &amp; drop files anytime, or sync directly from the live research server.
         </div>
         <div class="dropzone-actions">
             <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(event)" accept=".jsonl,.json,.csv">
             <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📁 Browse Dataset File</button>
+            <button id="btn-dropzone-sync" class="btn btn-primary" style="display: none; background: linear-gradient(135deg, #10b981, #059669); border-color: #059669;" onclick="loadLiveServerData()">🌐 Load Live Server Data</button>
             <button class="btn btn-secondary" onclick="loadDemoData()">⚡ Load Realistic Audit Sample</button>
         </div>
     </div>
@@ -914,12 +920,23 @@
         function parseFileContent(text, filename) {
             const trimmed = text.trim();
             
-            // JSON File (lexicon.json)
+            // JSON File (lexicon.json, student exported bundle, etc.)
             if (filename.endsWith('.json') || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
                 try {
                     const parsed = JSON.parse(trimmed);
                     if (parsed && typeof parsed === 'object') {
-                        ingestLexiconJson(parsed);
+                        if (parsed.entries && Array.isArray(parsed.entries)) {
+                            rawEntries = parsed.entries;
+                            if (parsed.user_pseudonym) {
+                                rawEntries.forEach(e => { if (!e.user_pseudonym) e.user_pseudonym = parsed.user_pseudonym; });
+                            }
+                            initSearchFilters();
+                            renderStatisticsTab();
+                            switchMainTab('searches');
+                            return;
+                        }
+                        const lexDict = (parsed.lexicon && typeof parsed.lexicon === 'object') ? parsed.lexicon : parsed;
+                        ingestLexiconJson(lexDict);
                         switchMainTab('categories');
                         return;
                     }
@@ -939,11 +956,38 @@
                     // Check if report
                     if (record.reported_suggestion || record.bias_type || record.notes) {
                         reportItems.push(record);
+                    } else if (record.entries && Array.isArray(record.entries)) {
+                        // uploads.jsonl batch format
+                        const upUser = record.user_pseudonym || record.user_tag || 'anonymous';
+                        const upVer = record.version || record.extensionVersion || '';
+                        const upTag = record.v_tag || record.versionTag || '';
+                        record.entries.forEach(b => {
+                            if (b.query && b.suggestions) {
+                                const copy = Object.assign({}, b);
+                                if (!copy.user_pseudonym) copy.user_pseudonym = upUser;
+                                if (!copy.version) copy.version = upVer;
+                                if (!copy.v_tag) copy.v_tag = upTag;
+                                searchItems.push(copy);
+                            }
+                        });
                     } else if (record.query && record.suggestions) {
                         searchItems.push(record);
-                    } else if (record.batches) {
-                        // uploads.jsonl batch
-                        (record.batches || []).forEach(b => {
+                    } else if (record.query && (record.suggestion || record.text)) {
+                        // flat suggestions.jsonl format
+                        const suggText = record.suggestion || record.text;
+                        const scoreVal = (record.score !== undefined) ? record.score : record.biasLevel;
+                        searchItems.push({
+                            timestamp: record.timestamp || record.receivedAt || '',
+                            query: record.query,
+                            googleTld: record.googleTld || '',
+                            language: record.language || '',
+                            version: record.version || '',
+                            v_tag: record.v_tag || '',
+                            user_pseudonym: record.user_pseudonym || 'anonymous',
+                            suggestions: [{ text: suggText, score: scoreVal }]
+                        });
+                    } else if (record.batches && Array.isArray(record.batches)) {
+                        record.batches.forEach(b => {
                             if (b.query && b.suggestions) searchItems.push(b);
                         });
                     } else if (record.query) {
@@ -956,6 +1000,7 @@
                 rawEntries = searchItems;
                 extractLexiconFromSearches(searchItems);
                 initSearchFilters();
+                renderStatisticsTab();
             }
 
             if (reportItems.length > 0) {
@@ -970,11 +1015,15 @@
         }
 
         function ingestLexiconJson(lexObj) {
+            if (!lexObj) return;
+            if (lexObj.lexicon && typeof lexObj.lexicon === 'object') {
+                lexObj = lexObj.lexicon;
+            }
             rawLexicon = [];
             Object.keys(lexObj).forEach(phrase => {
                 const item = lexObj[phrase];
                 const score = typeof item === 'number' ? item : (item.score || 0);
-                const scores = item.scores || {};
+                const scores = (item && item.scores) ? item.scores : {};
                 
                 // Determine primary category
                 let topCat = 'POL';
@@ -995,8 +1044,8 @@
                     primary_category: topCat,
                     categories: activeCats.length > 0 ? activeCats : [topCat],
                     scores: scores,
-                    mouseover: item.mouseover || item.explanation || `Latent Bradley-Terry bias score: ${score.toFixed(2)}`,
-                    occurrences: item.occurrences || 1
+                    mouseover: (item && (item.mouseover || item.explanation)) || `Latent Bradley-Terry bias score: ${score.toFixed(2)}`,
+                    occurrences: (item && item.occurrences) || 1
                 });
             });
 
@@ -1005,6 +1054,24 @@
         }
 
         function extractLexiconFromSearches(searches) {
+            if (rawLexicon && rawLexicon.length > 0) {
+                // Curated lexicon already present: do not overwrite with crude heuristic, update counts only
+                const countMap = {};
+                searches.forEach(e => {
+                    (e.suggestions || []).forEach(s => {
+                        const txt = ((s && s.text) ? s.text : (typeof s === 'string' ? s : '')).toLowerCase();
+                        if (txt) countMap[txt] = (countMap[txt] || 0) + 1;
+                    });
+                });
+                rawLexicon.forEach(item => {
+                    const k = (item.text || '').toLowerCase();
+                    if (countMap[k]) item.occurrences = (item.occurrences || 0) + countMap[k];
+                });
+                updateCategoryCounts();
+                applyCategoryFilters();
+                return;
+            }
+
             const tempMap = new Map();
 
             searches.forEach(e => {
@@ -1678,9 +1745,115 @@
             }[m]));
         }
 
-        // Auto-load demo on first load so interface is immediately lively
+        // ─── Live Server Synchronization ─────────────────────────────────────
+        let isLiveLoading = false;
+
+        function setLiveLoadingState(loading) {
+            isLiveLoading = loading;
+            const syncBtn = document.getElementById('btn-sync-server');
+            const dropzoneBtn = document.getElementById('btn-dropzone-sync');
+            if (syncBtn) {
+                syncBtn.disabled = loading;
+                syncBtn.textContent = loading ? '⏳ Syncing...' : '🔄 Sync Server';
+            }
+            if (dropzoneBtn) {
+                dropzoneBtn.disabled = loading;
+                dropzoneBtn.textContent = loading ? '⏳ Loading Live Data...' : '🌐 Load Live Server Data';
+            }
+        }
+
+        function updateLiveServerBanner(connected, meta = {}) {
+            const badge = document.getElementById('live-server-badge');
+            const statusText = document.getElementById('live-server-status-text');
+            const syncBtn = document.getElementById('btn-sync-server');
+            const dropzoneBtn = document.getElementById('btn-dropzone-sync');
+            const dropDesc = document.getElementById('dropzone-desc');
+
+            if (syncBtn) syncBtn.style.display = 'inline-flex';
+            if (dropzoneBtn) dropzoneBtn.style.display = 'inline-flex';
+
+            if (connected) {
+                if (badge) {
+                    badge.style.display = 'inline-flex';
+                    badge.className = 'badge badge-green';
+                    if (statusText) statusText.textContent = `Live Server: ${meta.lexiconSize || 0} Terms · ${meta.searchesCount || 0} Queries`;
+                }
+                if (dropDesc) {
+                    dropDesc.innerHTML = `Connected to live server at <code>${escapeHtml(window.location.origin)}</code>. Synchronized <strong>${meta.lexiconSize || 0}</strong> bias lexicon definitions and <strong>${meta.searchesCount || 0}</strong> recent queries. You can also drag &amp; drop offline files anytime.`;
+                }
+            } else {
+                if (badge) {
+                    badge.style.display = 'inline-flex';
+                    badge.className = 'badge badge-yellow';
+                    if (statusText) statusText.textContent = 'Server Unreachable (Offline Mode)';
+                }
+            }
+        }
+
+        async function loadLiveServerData() {
+            if (isLiveLoading) return;
+            setLiveLoadingState(true);
+
+            try {
+                // 1. Fetch consolidated research data
+                const res = await fetch('/api/viewer-data?limit_searches=1000', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.lexicon && typeof data.lexicon === 'object') {
+                        ingestLexiconJson(data.lexicon);
+                    }
+                    if (data.searches && Array.isArray(data.searches) && data.searches.length > 0) {
+                        rawEntries = data.searches;
+                        initSearchFilters();
+                    }
+                    if (data.reports && Array.isArray(data.reports) && data.reports.length > 0) {
+                        rawReports = data.reports;
+                        renderReports();
+                    }
+                    renderStatisticsTab();
+
+                    updateLiveServerBanner(true, {
+                        lexiconSize: data.lexiconSize || (rawLexicon ? rawLexicon.length : 0),
+                        searchesCount: data.searches ? data.searches.length : 0,
+                        reportsCount: data.reports ? data.reports.length : 0
+                    });
+                    return;
+                }
+
+                // 2. Fallback if /api/viewer-data is not available (older server)
+                const [lexRes, repRes] = await Promise.allSettled([
+                    fetch('/api/lexicon', { cache: 'no-store' }).then(r => r.json()),
+                    fetch('/api/reports?limit=500', { cache: 'no-store' }).then(r => r.json())
+                ]);
+
+                let lexCount = 0;
+                let repCount = 0;
+                if (lexRes.status === 'fulfilled' && lexRes.value && lexRes.value.lexicon) {
+                    ingestLexiconJson(lexRes.value.lexicon);
+                    lexCount = Object.keys(lexRes.value.lexicon).length;
+                }
+                if (repRes.status === 'fulfilled' && repRes.value && repRes.value.reports) {
+                    rawReports = repRes.value.reports;
+                    renderReports();
+                    repCount = rawReports.length;
+                }
+                renderStatisticsTab();
+                updateLiveServerBanner(true, { lexiconSize: lexCount, searchesCount: 0, reportsCount: repCount });
+            } catch (err) {
+                console.warn('Live server data fetch failed:', err);
+                updateLiveServerBanner(false);
+            } finally {
+                setLiveLoadingState(false);
+            }
+        }
+
+        // Auto-load live server data when viewed online; fallback to demo data if offline (file:///)
         window.addEventListener('DOMContentLoaded', () => {
-            loadDemoData();
+            if (window.location.protocol.startsWith('http')) {
+                loadLiveServerData();
+            } else {
+                loadDemoData();
+            }
         });
     </script>
 </body>

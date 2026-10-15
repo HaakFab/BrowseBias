@@ -2675,6 +2675,73 @@ def get_suggestions():
     })
 
 
+@app.route('/api/viewer-data', methods=['GET'])
+@app.route('/viewer-data', methods=['GET'])
+def get_viewer_data():
+    """Return consolidated live research data (lexicon, recent searches, reports) for the viewer."""
+    limit_searches = request.args.get('limit_searches', 1000, type=int)
+    limit_reports = request.args.get('limit_reports', 500, type=int)
+
+    lexicon = load_lexicon()
+
+    all_searches = []
+    total_suggestions = 0
+    if os.path.exists(UPLOAD_FILE):
+        with open(UPLOAD_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    upload = json.loads(line)
+                    up_user = upload.get('user_pseudonym') or upload.get('user_tag') or 'anonymous'
+                    up_version = upload.get('version') or upload.get('extensionVersion', '')
+                    up_vtag = upload.get('v_tag') or upload.get('versionTag', '')
+                    up_received = upload.get('receivedAt', '')
+
+                    for entry in upload.get('entries', []):
+                        suggs = entry.get('suggestions', [])
+                        total_suggestions += len(suggs)
+                        entry_copy = dict(entry)
+                        entry_user = entry.get('user_pseudonym') or entry.get('user_tag') or up_user
+                        entry_copy['user_pseudonym'] = entry_user
+                        if not entry_copy.get('version'):
+                            entry_copy['version'] = up_version
+                        if not entry_copy.get('v_tag'):
+                            entry_copy['v_tag'] = up_vtag
+                        if not entry_copy.get('receivedAt'):
+                            entry_copy['receivedAt'] = up_received
+                        all_searches.append(entry_copy)
+                except json.JSONDecodeError:
+                    continue
+
+    reports = []
+    if os.path.exists(REPORTS_FILE):
+        with open(REPORTS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        reports.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+    recent_searches = list(reversed(all_searches[-limit_searches:]))
+    recent_reports = list(reversed(reports[-limit_reports:]))
+
+    return jsonify({
+        'status': 'ok',
+        'lexicon': lexicon,
+        'lexiconSize': len(lexicon),
+        'searches': recent_searches,
+        'totalSearches': len(all_searches),
+        'totalSuggestions': total_suggestions,
+        'reports': recent_reports,
+        'totalReports': len(reports),
+        'server': 'BrowseBias Server'
+    })
+
+
 @app.route('/api/score', methods=['POST'])
 @app.route('/score', methods=['POST'])
 def score_suggestion():
